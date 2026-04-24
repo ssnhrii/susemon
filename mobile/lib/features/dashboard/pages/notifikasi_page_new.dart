@@ -1,345 +1,181 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'dart:async';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
+import '../../../providers/app_provider.dart';
+import '../../../models/sensor_model.dart';
 
-class NotifikasiPageNew extends StatefulWidget {
+class NotifikasiPageNew extends StatelessWidget {
   const NotifikasiPageNew({super.key});
 
   @override
-  State<NotifikasiPageNew> createState() => _NotifikasiPageNewState();
-}
-
-class _NotifikasiPageNewState extends State<NotifikasiPageNew> {
-  String currentTime = '';
-  Timer? _timer;
-
-  final List<Map<String, dynamic>> notifications = [
-    {
-      'title': 'Suhu Kritis - Node D4',
-      'message': 'Suhu mencapai 41.2°C pada Rack Storage. Tindakan segera diperlukan!',
-      'time': '2 menit lalu',
-      'type': 'critical',
-      'icon': Icons.warning_amber,
-      'node': 'NODE-D4',
-    },
-    {
-      'title': 'Anomali Terdeteksi',
-      'message': 'Pola anomali suhu tidak normal pada Node B2. AI confidence: 87%',
-      'time': '5 menit lalu',
-      'type': 'warning',
-      'icon': Icons.analytics,
-      'node': 'NODE-B2',
-    },
-    {
-      'title': 'Prediksi Overheating',
-      'message': 'AI memprediksi overheating dalam 30 menit pada Node D4',
-      'time': '10 menit lalu',
-      'type': 'warning',
-      'icon': Icons.psychology,
-      'node': 'NODE-D4',
-    },
-    {
-      'title': 'Koneksi LoRa Berhasil',
-      'message': 'Semua node sensor terhubung dengan gateway. Signal strength: Excellent',
-      'time': '15 menit lalu',
-      'type': 'success',
-      'icon': Icons.check_circle,
-      'node': 'SYSTEM',
-    },
-    {
-      'title': 'Maintenance Reminder',
-      'message': 'Jadwal maintenance rutin sistem pendingin minggu depan',
-      'time': '1 jam lalu',
-      'type': 'info',
-      'icon': Icons.build,
-      'node': 'SYSTEM',
-    },
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _updateTime();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _updateTime();
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _updateTime() {
-    final now = DateTime.now();
-    setState(() {
-      currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')} WIB';
-    });
-  }
-
-  Color _getColor(String type) {
-    switch (type) {
-      case 'critical':
-        return AppColors.danger;
-      case 'warning':
-        return AppColors.warning;
-      case 'success':
-        return AppColors.success;
-      default:
-        return AppColors.primary;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final notif = context.watch<NotificationProvider>();
+    final fmt   = DateFormat('dd/MM HH:mm');
+
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.darkGradient),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(AppSizes.paddingL),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.cardBorder),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Notifikasi & Peringatan',
-                          style: GoogleFonts.orbitron(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
+      backgroundColor: AppColors.bgDark,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(notif.unreadCount),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => notif.fetch(),
+                color: AppColors.primary,
+                backgroundColor: AppColors.bgCard,
+                child: notif.notifications.isEmpty
+                    ? const _EmptyNotif()
+                    : ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: notif.notifications.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) => _NotifCard(
+                          notif: notif.notifications[i],
+                          fmt: fmt,
+                          onTap: () => notif.markRead(notif.notifications[i].id),
                         ),
-                        Text(
-                          'Real-time System Alerts',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.danger.withOpacity(0.3)),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.danger,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.danger,
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${notifications.length} Notifikasi',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.danger,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
               ),
-
-              // Notifications List
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(AppSizes.paddingL),
-                  itemCount: notifications.length,
-                  itemBuilder: (context, index) {
-                    final notif = notifications[index];
-                    final color = _getColor(notif['type']);
-                    
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.bgCard,
-                        borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                        border: Border.all(color: color.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              notif['icon'],
-                              color: color,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        notif['title'],
-                                        style: GoogleFonts.inter(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: color.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        notif['node'],
-                                        style: GoogleFonts.robotoMono(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: color,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  notif['message'],
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    color: AppColors.textSecondary,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.access_time,
-                                      size: 14,
-                                      color: AppColors.textTertiary,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      notif['time'],
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        color: AppColors.textTertiary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              // Footer Summary
-              Container(
-                padding: const EdgeInsets.all(AppSizes.paddingL),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  border: Border(
-                    top: BorderSide(color: AppColors.cardBorder),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildSummaryItem(Icons.sensors, '4 Node', 'Aktif'),
-                        _buildSummaryItem(Icons.analytics, 'AI Analysis', '94% Akurasi'),
-                        _buildSummaryItem(Icons.access_time, 'Update', currentTime),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '🔄 Real-time monitoring · Terintegrasi dengan LoRa Gateway',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: AppColors.textTertiary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildSummaryItem(IconData icon, String label, String value) {
-    return Column(
+  Widget _buildHeader(int unread) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    color: AppColors.bgCard,
+    child: Row(
       children: [
-        Icon(icon, color: AppColors.primary, size: 20),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            color: AppColors.textSecondary,
+        const Icon(Icons.notifications_rounded, color: AppColors.primary, size: 22),
+        const SizedBox(width: 10),
+        const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Notifikasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text('Peringatan & Alert Sistem', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        ]),
+        const Spacer(),
+        if (unread > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.danger.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.danger.withOpacity(0.3)),
+            ),
+            child: Text('$unread Belum Dibaca',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.danger)),
           ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
       ],
+    ),
+  );
+}
+
+class _NotifCard extends StatelessWidget {
+  final AppNotification notif;
+  final DateFormat fmt;
+  final VoidCallback onTap;
+  const _NotifCard({required this.notif, required this.fmt, required this.onTap});
+
+  Color get _color => switch (notif.type) {
+    'critical' => AppColors.danger,
+    'warning'  => AppColors.warning,
+    'success'  => AppColors.success,
+    _          => AppColors.primary,
+  };
+
+  IconData get _icon => switch (notif.type) {
+    'critical' => Icons.thermostat,
+    'warning'  => Icons.show_chart,
+    'success'  => Icons.check_circle,
+    _          => Icons.info_outline,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: notif.isRead ? AppColors.bgCard : AppColors.bgCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: notif.isRead ? AppColors.cardBorder : _color.withOpacity(0.4),
+            width: notif.isRead ? 1 : 1.5,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: _color.withOpacity(notif.isRead ? 0.08 : 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(_icon, color: _color.withOpacity(notif.isRead ? 0.5 : 1), size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(notif.title,
+                        style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700,
+                          color: notif.isRead ? AppColors.textSecondary : Colors.white,
+                        )),
+                  ),
+                  if (!notif.isRead)
+                    Container(width: 8, height: 8,
+                        decoration: BoxDecoration(color: _color, shape: BoxShape.circle)),
+                ]),
+                const SizedBox(height: 4),
+                Text(notif.message,
+                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.access_time, size: 11, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(fmt.format(notif.createdAt),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  if (notif.nodeId != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _color.withOpacity(0.15), borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(notif.nodeId!,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _color)),
+                    ),
+                  ],
+                ]),
+              ]),
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
+
+class _EmptyNotif extends StatelessWidget {
+  const _EmptyNotif();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.notifications_none, size: 56, color: AppColors.textSecondary),
+        SizedBox(height: 12),
+        Text('Tidak ada notifikasi', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+      ],
+    ),
+  );
 }

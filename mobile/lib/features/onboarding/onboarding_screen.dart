@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_sizes.dart';
 import '../auth/login_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -12,208 +10,146 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
+  final _pageCtrl = PageController();
+  int _page = 0;
 
-  final List<Map<String, dynamic>> _pages = [
-    {
-      'icon': Icons.sensors,
-      'title': 'Real-time Monitoring',
-      'description': 'Pantau suhu dan kelembapan server secara real-time dengan teknologi LoRa',
-    },
-    {
-      'icon': Icons.psychology,
-      'title': 'AI Detection',
-      'description': 'Deteksi anomali otomatis dengan akurasi 94% menggunakan AI',
-    },
-    {
-      'icon': Icons.notifications_active,
-      'title': 'Smart Alerts',
-      'description': 'Notifikasi instant saat terdeteksi kondisi berbahaya',
-    },
+  final _pages = const [
+    _OnboardPage(
+      icon: Icons.sensors,
+      title: 'Monitoring Real-time',
+      desc: 'Pantau suhu & kelembapan ruang server secara real-time melalui node sensor LoRa.',
+    ),
+    _OnboardPage(
+      icon: Icons.psychology,
+      title: 'Deteksi Anomali AI',
+      desc: 'Sistem AI mendeteksi pola anomali suhu sebelum mencapai titik kritis.',
+    ),
+    _OnboardPage(
+      icon: Icons.notifications_active,
+      title: 'Notifikasi Instan',
+      desc: 'Terima peringatan langsung saat kondisi server memasuki status waspada atau berbahaya.',
+    ),
   ];
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _next() {
+    if (_page < _pages.length - 1) {
+      _pageCtrl.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    } else {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.darkGradient),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Skip button
-              Align(
-                alignment: Alignment.topRight,
-                child: TextButton(
-                  onPressed: _goToLogin,
-                  child: Text(
-                    'Skip',
-                    style: GoogleFonts.inter(
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+      backgroundColor: AppColors.bgDark,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _pageCtrl,
+                onPageChanged: (i) => setState(() => _page = i),
+                itemCount: _pages.length,
+                itemBuilder: (_, i) => _pages[i],
               ),
-              
-              // PageView
-              Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                    });
-                  },
-                  itemCount: _pages.length,
-                  itemBuilder: (context, index) {
-                    return _buildPage(_pages[index]);
-                  },
-                ),
-              ),
-              
-              // Dots indicator
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  _pages.length,
-                  (index) => _buildDot(index),
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              // Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingL),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.secondary],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.4),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              child: Column(
+                children: [
+                  // Dots
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(_pages.length, (i) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: _page == i ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _page == i ? AppColors.primary : AppColors.bgCardAlt,
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                    ],
+                    )),
                   ),
-                  child: ElevatedButton(
-                    onPressed: _currentPage == _pages.length - 1
-                        ? _goToLogin
-                        : _nextPage,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppSizes.radiusL),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _next,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        _page == _pages.length - 1 ? 'Mulai' : 'Lanjut',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _currentPage == _pages.length - 1 ? 'GET STARTED' : 'NEXT',
-                          style: GoogleFonts.inter(
-                            fontSize: AppSizes.fontM,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward, color: Colors.white),
-                      ],
-                    ),
                   ),
-                ),
+                  if (_page < _pages.length - 1) ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => Navigator.pushReplacement(
+                          context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                      child: Text('Lewati', style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildPage(Map<String, dynamic> page) {
+class _OnboardPage extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String desc;
+  const _OnboardPage({required this.icon, required this.title, required this.desc});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(AppSizes.paddingXL),
+      padding: const EdgeInsets.all(32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(40),
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.primary.withOpacity(0.2),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-                width: 2,
-              ),
+              color: AppColors.bgCard,
+              border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+              boxShadow: [
+                BoxShadow(color: AppColors.primary.withOpacity(0.2), blurRadius: 40, spreadRadius: 4),
+              ],
             ),
-            child: Icon(
-              page['icon'],
-              size: 80,
-              color: AppColors.primary,
-            ),
+            child: Icon(icon, size: 56, color: AppColors.primary),
           ),
-          const SizedBox(height: 48),
-          Text(
-            page['title'],
-            style: GoogleFonts.orbitron(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          const SizedBox(height: 40),
+          Text(title,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white),
+              textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          Text(
-            page['description'],
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
+          Text(desc,
+              style: TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.6),
+              textAlign: TextAlign.center),
         ],
       ),
     );
-  }
-
-  Widget _buildDot(int index) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: _currentPage == index ? 24 : 8,
-      height: 8,
-      decoration: BoxDecoration(
-        color: _currentPage == index ? AppColors.primary : AppColors.textTertiary,
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
-
-  void _nextPage() {
-    _pageController.nextPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _goToLogin() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
   }
 }

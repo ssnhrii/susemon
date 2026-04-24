@@ -1,40 +1,52 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Dark gradient background
+  // V380 Pro style - deep dark background
+  static const bgDark     = Color(0xFF0A0E1A);
+  static const bgCard     = Color(0xFF111827);
+  static const bgCardAlt  = Color(0xFF1A2235);
+  static const cardBorder = Color(0xFF1E2D45);
+
+  // Accent
+  static const primary    = Color(0xFF00B4FF);
+  static const primaryDim = Color(0xFF0066AA);
+
+  // Status
+  static const success    = Color(0xFF00C853);
+  static const warning    = Color(0xFFFFAB00);
+  static const danger     = Color(0xFFFF1744);
+  static const aman       = Color(0xFF00C853);
+  static const waspada    = Color(0xFFFFAB00);
+  static const berbahaya  = Color(0xFFFF1744);
+
+  // Text
+  static const textPrimary   = Colors.white;
+  static const textSecondary = Color(0xFF8899AA);
+  static const textDim       = Color(0xFF445566);
+
+  // Gradient
   static const darkGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF0F2027),
-      Color(0xFF203A43),
-      Color(0xFF2C5364),
-    ],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xFF0A0E1A), Color(0xFF0D1525)],
   );
 
-  // Primary colors
-  static const primary = Color(0xFF64B5F6);
-  static const secondary = Color(0xFF1F6E8A);
-  static const accent = Color(0xFF2C5364);
-  
-  // Status colors
-  static const success = Color(0xFF4CAF50);
-  static const warning = Color(0xFFE67E22);
-  static const danger = Color(0xFFE53E3E);
-  static const aman = Color(0xFF4CAF50);
-  static const waspada = Color(0xFFE67E22);
-  static const berbahaya = Color(0xFFE53E3E);
-  
-  // Card colors
-  static const cardBg = Color(0x14FFFFFF); // 8% white
-  static const cardBorder = Color(0x26FFFFFF); // 15% white
-  
-  // Text colors
-  static const textPrimary = Colors.white;
-  static final textSecondary = Colors.white.withOpacity(0.7);
-  static final textTertiary = Colors.white.withOpacity(0.5);
-  
-  // Background colors
-  static final bgOverlay = Colors.black.withOpacity(0.3);
-  static final bgCard = Colors.white.withOpacity(0.08);
+  static Color statusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'BERBAHAYA':
+      case 'CRITICAL':
+      case 'HIGH':
+        return danger;
+      case 'WASPADA':
+      case 'WARNING':
+      case 'MEDIUM':
+        return warning;
+      case 'AMAN':
+      case 'NORMAL':
+      case 'LOW':
+        return success;
+      default:
+        return textSecondary;
+    }
+  }
 }

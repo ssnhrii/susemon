@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const routes = require('./routes');
 const db = require('./config/database');
+const { analyzeNode } = require('./ai/anomalyDetector');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -124,6 +125,83 @@ const broadcastSensorData = async () => {
 
 // Broadcast every 3 seconds
 setInterval(broadcastSensorData, 3000);
+
+// ── Auto AI Analysis setiap 5 menit ──────────────────────────────────────────
+const THRESHOLDS = {
+  tempWarning: parseFloat(process.env.AI_THRESHOLD_TEMP_WARNING || 35),
+  tempDanger:  parseFloat(process.env.AI_THRESHOLD_TEMP        || 40),
+  humWarning:  parseFloat(process.env.AI_THRESHOLD_HUM_WARNING || 70),
+  humDanger:   parseFloat(process.env.AI_THRESHOLD_HUMIDITY    || 80),
+};
+
+const runAutoAI = async () => {
+  try {
+    const [nodes] = await db.query('SELECT node_id FROM sensor_nodes WHERE is_active = TRUE');
+    let anomalyCount = 0;
+
+    for (const node of nodes) {
+      const [rows] = await db.query(`
+        SELECT temperature, humidity, timestamp
+        FROM sensor_data WHERE node_id = ?
+        ORDER BY timestamp DESC LIMIT 50
+      `, [node.node_id]);
+
+      if (rows.length < 3) continue;
+      const result = analyzeNode(rows.reverse(), THRESHOLDS);
+
+      if (result.anomaly_detected) {
+        anomalyCount++;
+        // Cek duplikat notifikasi (10 menit)
+        const [existing] = await db.query(`
+          SELECT id FROM notifications
+          WHERE node_id = ? AND type IN ('critical','warning')
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+          LIMIT 1
+        `, [node.node_id]);
+
+        if (!existing.length) {
+          const type  = result.risk_level === 'HIGH' ? 'critical' : 'warning';
+          const title = result.overheating_risk
+            ? `Overheating - Node ${node.node_id}`
+            : `Anomali - Node ${node.node_id}`;
+          const msg   = result.insights.length
+            ? result.insights[0]
+            : `Confidence: ${result.confidence}%`;
+
+          await db.query(`
+            INSERT INTO notifications (node_id, title, message, type)
+            VALUES (?, ?, ?, ?)
+          `, [node.node_id, title, msg, type]);
+        }
+
+        // Broadcast AI alert via WebSocket
+        const alert = JSON.stringify({
+          type: 'ai_alert',
+          node_id: node.node_id,
+          risk_level: result.risk_level,
+          confidence: result.confidence,
+          insights: result.insights,
+          timestamp: new Date().toISOString(),
+        });
+        wss.clients.forEach(c => {
+          if (c.readyState === WebSocket.OPEN) c.send(alert);
+        });
+      }
+    }
+
+    if (anomalyCount > 0) {
+      console.log(`🤖 AI Auto-scan: ${anomalyCount} anomali terdeteksi`);
+    }
+  } catch (err) {
+    console.error('Auto AI error:', err);
+  }
+};
+
+// Jalankan AI pertama kali setelah 10 detik, lalu setiap 5 menit
+setTimeout(() => {
+  runAutoAI();
+  setInterval(runAutoAI, 5 * 60 * 1000);
+}, 10000);
 
 console.log(`🔌 WebSocket server started on port ${WS_PORT}`);
 
