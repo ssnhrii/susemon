@@ -263,12 +263,6 @@ def start_mqtt_listener(loop: asyncio.AbstractEventLoop):
     if settings.MQTT_USER:
         client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASS)
 
-    # TLS untuk HiveMQ Cloud (port 8883)
-    if settings.MQTT_USE_TLS:
-        import ssl
-        client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2)
-        logger.info("MQTT TLS enabled")
-
     try:
         client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, keepalive=60)
     except Exception as e:

@@ -32,7 +32,6 @@ class Settings:
     # MQTT
     MQTT_BROKER: str     = os.getenv("MQTT_BROKER", "localhost")
     MQTT_PORT: int       = int(os.getenv("MQTT_PORT", 1883))
-    MQTT_USE_TLS: bool   = os.getenv("MQTT_USE_TLS", "false").lower() == "true"
     MQTT_TOPIC: str      = os.getenv("MQTT_TOPIC", "sensor/data")
     MQTT_CLIENT_ID: str  = os.getenv("MQTT_CLIENT_ID", "susemon-fastapi")
     MQTT_USER: str       = os.getenv("MQTT_USER", "")

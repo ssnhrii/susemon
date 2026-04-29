@@ -26,16 +26,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
 
-// ── Konfigurasi MQTT — HiveMQ Cloud ──────────────────────────────────────────
-#define MQTT_HOST      "53fdb682d08547bfb9177fee6bb08354.s1.eu.hivemq.cloud"
-#define MQTT_PORT      8883
+// ── Konfigurasi MQTT — lokal via WiFiManager ─────────────────────────────────
+// IP server diisi via portal WiFiManager (192.168.4.1) saat pertama kali setup
+#define MQTT_PORT      1883
 #define MQTT_TOPIC     "sensor/data"
 #define MQTT_TOPIC_AI  "sensor/ai_result"
 #define MQTT_CLIENT_ID "susemon-gateway"
@@ -69,9 +68,9 @@ char mqttServer[40] = "";  // IP diisi via portal WiFiManager (192.168.4.1)
 #define OLED_RESET     -1
 
 // ── Objek ─────────────────────────────────────────────────────────────────────
-Adafruit_SSD1306  display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-WiFiClientSecure  wifiClient;   // TLS untuk HiveMQ Cloud
-PubSubClient      mqttClient(wifiClient);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+WiFiClient       wifiClient;
+PubSubClient     mqttClient(wifiClient);
 
 // ── Variabel global ───────────────────────────────────────────────────────────
 int    rxCount    = 0;
@@ -112,7 +111,7 @@ void setup() {
   showStatus("NTP sync...");
   delay(2000);
 
-  // MQTT — connect ke HiveMQ Cloud
+  // MQTT
   connectMQTT();
 
   // LoRa
@@ -350,29 +349,25 @@ void connectMQTT() {
   if (!wifiOk) return;
   showStatus("MQTT...");
 
-  // Set server ke HiveMQ Cloud
-  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setServer(mqttServer, MQTT_PORT);
   mqttClient.setBufferSize(512);
   mqttClient.setCallback(mqttCallback);
 
-  // Skip verifikasi sertifikat (cukup untuk project PBL)
-  wifiClient.setInsecure();
-
   int retry = 0;
   while (!mqttClient.connected() && retry < 5) {
-    Serial.printf("[MQTT] Menghubungkan ke %s:%d...\n", MQTT_HOST, MQTT_PORT);
+    Serial.printf("[MQTT] Menghubungkan ke %s:%d...\n", mqttServer, MQTT_PORT);
 
     bool ok = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS);
 
     if (ok) {
       mqttOk = true;
       mqttClient.subscribe(MQTT_TOPIC_AI);
-      Serial.println("[MQTT] Terhubung ke HiveMQ Cloud!");
+      Serial.println("[MQTT] Terhubung!");
       return;
     }
 
     Serial.printf("[MQTT] Gagal rc=%d, retry %d/5\n", mqttClient.state(), retry + 1);
-    delay(3000);
+    delay(2000);
     retry++;
   }
   mqttOk = false;
