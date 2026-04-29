@@ -256,67 +256,140 @@ void updateDisplay() {
   bool isOffline = (aiStatus != "MENUNGGU") &&
                    (millis() - lastDownlink > DOWNLINK_TIMEOUT);
 
+  // Tentukan status color (inverted block untuk status)
+  bool isDanger  = (aiStatus == "BERBAHAYA");
+  bool isWaspada = (aiStatus == "WASPADA");
+  bool isAman    = (aiStatus == "AMAN");
+
   display.clearDisplay();
+
+  // ── Header bar ──
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("SUSEMON");
+  display.setCursor(55, 3);
+  display.print("NODE  ");
+  display.print(NODE_ID);
+  // Blink dot
+  static bool blink = false;
+  blink = !blink;
+  if (blink) display.fillCircle(122, 6, 3, SSD1306_BLACK);
+  else       display.drawCircle(122, 6, 3, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("SUSEMON  Node ");
-  display.println(NODE_ID);
-  display.drawLine(0, 9, 127, 9, SSD1306_WHITE);
-
-  display.setTextSize(2);
-  display.setCursor(0, 13);
+  // ── Suhu besar (kiri) ──
+  display.setTextSize(3);
+  display.setCursor(0, 16);
   display.printf("%.1f", temperature);
   display.setTextSize(1);
-  display.setCursor(72, 16);
-  display.println("C RAW");
+  display.setCursor(74, 16);
+  display.print("o");   // degree symbol
+  display.setTextSize(2);
+  display.setCursor(80, 20);
+  display.print("C");
 
+  // ── Kelembapan (kanan bawah suhu) ──
   display.setTextSize(1);
-  display.setCursor(0, 32);
-  display.printf("Hum: %.1f%% RAW", humidity);
+  display.setCursor(74, 36);
+  display.printf("H:%.0f%%", humidity);
 
-  display.setCursor(0, 42);
-  display.print("AI: ");
+  // ── Divider vertikal ──
+  display.drawLine(70, 14, 70, 44, SSD1306_WHITE);
+
+  // ── TX counter kecil ──
+  display.setCursor(74, 46);
+  display.printf("TX:%d", txCount);
+
+  // ── Divider horizontal ──
+  display.drawLine(0, 44, 127, 44, SSD1306_WHITE);
+
+  // ── Status AI bar (bawah) ──
   if (aiStatus == "MENUNGGU") {
-    display.print("Menunggu...");
-  } else if (isOffline) {
-    display.print(aiStatus);
-    display.print(" (offline)");
+    // Animasi titik-titik menunggu
+    static int dotCount = 0;
+    dotCount = (dotCount + 1) % 4;
+    display.setCursor(2, 50);
+    display.print("AI: Menunggu");
+    for (int i = 0; i < dotCount; i++) display.print(".");
   } else {
+    // Status block — inverted jika berbahaya
+    if (isDanger) {
+      display.fillRect(0, 45, 128, 19, SSD1306_WHITE);
+      display.setTextColor(SSD1306_BLACK);
+    }
+    display.setCursor(2, 50);
+    display.print("AI:");
+    display.setCursor(22, 50);
     display.print(aiStatus);
-    if (aiConf > 0) display.printf(" %d%%", aiConf);
+    if (aiConf > 0) {
+      display.setCursor(85, 50);
+      display.printf("%d%%", aiConf);
+    }
+    // Offline indicator
+    if (isOffline) {
+      display.setCursor(2, 57);
+      display.print("(offline)");
+    } else {
+      display.setCursor(2, 57);
+      display.print(aiRisk);
+    }
+    display.setTextColor(SSD1306_WHITE);
   }
 
-  display.setCursor(0, 54);
-  display.printf("TX:%d Fail:%d", txCount, failCount);
+  // ── Fail counter (pojok kanan bawah) ──
+  if (failCount > 0) {
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(100, 57);
+    display.printf("F:%d", failCount);
+  }
 
   display.display();
 }
 
 void showSplash() {
   display.clearDisplay();
+
+  // Border ganda
+  display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+  display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
+
+  // Judul
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 5);
-  display.println("SUSEMON");
+  display.setCursor(14, 8);
+  display.print("SUSEMON");
+
+  display.drawLine(10, 28, 118, 28, SSD1306_WHITE);
+
   display.setTextSize(1);
-  display.setCursor(5, 32);
-  display.print("Node ");
-  display.println(NODE_ID);
-  display.setCursor(5, 46);
-  display.println("Raw Data Mode");
+  display.setCursor(22, 33);
+  display.print("Node Sensor ");
+  display.print(NODE_ID);
+  display.setCursor(18, 43);
+  display.print("DHT22  LoRa 923MHz");
+  display.setCursor(22, 53);
+  display.print("PBL-TRPL412 v2.0");
+
   display.display();
-  delay(2000);
+  delay(2500);
 }
 
 void showError(String msg) {
   display.clearDisplay();
+
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("!! ERROR !!");
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 20);
-  display.println("ERROR:");
+
+  display.drawRect(0, 15, 128, 49, SSD1306_WHITE);
+  display.setCursor(4, 22);
   display.println(msg);
+
   display.display();
 }
 
