@@ -109,13 +109,17 @@ async def _process(data: dict):
 
     pool = await get_pool()
     new_id = None
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
-                (node_id, temperature, humidity, status_threshold)
-            )
-            new_id = cur.lastrowid
+    try:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
+                    (node_id, temperature, humidity, status_threshold)
+                )
+                new_id = cur.lastrowid
+    except Exception as e:
+        logger.error(f"DB insert error: {e}")
+        return
 
     logger.info(f"DB saved id={new_id}: node={node_id} temp={temperature} hum={humidity}")
 

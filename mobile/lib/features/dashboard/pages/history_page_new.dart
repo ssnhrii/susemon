@@ -52,14 +52,20 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
 
   Future<void> _fetch() async {
     if (_nodeId.isEmpty) return;
-    setState(() => _loading = true);
+    setState(() { _loading = true; });
     try {
       final data = await context.read<SensorProvider>().getHistory(_nodeId, period: _period);
-      setState(() => _history = data);
-    } catch (_) {
-      setState(() => _history = []);
+      if (mounted) setState(() => _history = data);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _history = []);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat data: $e'),
+              backgroundColor: AppColors.danger, duration: const Duration(seconds: 3)),
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -195,9 +201,16 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
   }
 
   Widget _buildChart() {
+    if (_history.isEmpty) return const SizedBox.shrink();
+
     final spots = _history.asMap().entries
         .map((e) => FlSpot(e.key.toDouble(), e.value.temperature))
         .toList();
+
+    // Dynamic Y-axis berdasarkan data aktual
+    final temps = _history.map((r) => r.temperature).toList();
+    final minY  = (temps.reduce((a, b) => a < b ? a : b) - 3).clamp(0.0, 100.0);
+    final maxY  = (temps.reduce((a, b) => a > b ? a : b) + 3).clamp(0.0, 100.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -212,7 +225,7 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
         SizedBox(
           height: 160,
           child: LineChart(LineChartData(
-            minY: 20, maxY: 50,
+            minY: minY, maxY: maxY,
             gridData: FlGridData(show: true, drawVerticalLine: false,
                 getDrawingHorizontalLine: (_) => FlLine(color: AppColors.cardBorder, strokeWidth: 1)),
             borderData: FlBorderData(show: false),
@@ -233,7 +246,12 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (spot, _, __, ___) {
-                  final r = _history[spot.x.toInt()];
+                  // Bounds check agar tidak crash
+                  final idx = spot.x.toInt();
+                  if (idx < 0 || idx >= _history.length) {
+                    return FlDotCirclePainter(radius: 2, color: AppColors.primary, strokeWidth: 0);
+                  }
+                  final r = _history[idx];
                   final c = AppColors.statusColor(r.status);
                   return FlDotCirclePainter(radius: r.status != 'AMAN' ? 4 : 2, color: c, strokeWidth: 0);
                 },

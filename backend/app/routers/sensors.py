@@ -108,10 +108,11 @@ async def get_statistics(
 @router.post("/data")
 async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     """Endpoint untuk LoRa gateway — dilindungi API key (X-Api-Key header)"""
+    from app.core.config import settings
     status = "AMAN"
-    if body.temperature > 40 or body.humidity > 80:
+    if body.temperature > settings.AI_TEMP_DANGER or body.humidity > settings.AI_HUM_DANGER:
         status = "BERBAHAYA"
-    elif body.temperature > 35 or body.humidity > 70:
+    elif body.temperature > settings.AI_TEMP_WARNING or body.humidity > settings.AI_HUM_WARNING:
         status = "WASPADA"
 
     pool = await get_pool()

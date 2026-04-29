@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
+import ipaddress
 from app.core.database import get_pool
 from app.core.security import create_token, get_current_user
 from app.models.schemas import LoginRequest
@@ -8,6 +9,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/login")
 async def login(body: LoginRequest):
+    # Validasi format IP address
+    try:
+        ipaddress.ip_address(body.ip_address)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Format IP Address tidak valid")
+
+    if len(body.access_code) < 4:
+        raise HTTPException(status_code=400, detail="Access Code terlalu pendek")
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:

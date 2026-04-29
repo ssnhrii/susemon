@@ -61,6 +61,13 @@ def check_rate_limit(ip: str) -> bool:
     now = time.time()
     hits = [t for t in _rate_store[ip] if now - t < RATE_WINDOW]
     _rate_store[ip] = hits
+    # Cleanup jika terlalu banyak IP (cegah memory leak)
+    if len(_rate_store) > 5000:
+        cutoff = now - RATE_WINDOW
+        for k in list(_rate_store.keys()):
+            _rate_store[k] = [t for t in _rate_store[k] if t > cutoff]
+            if not _rate_store[k]:
+                del _rate_store[k]
     if len(hits) >= RATE_LIMIT:
         return False
     _rate_store[ip].append(now)

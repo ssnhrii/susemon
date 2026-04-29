@@ -63,7 +63,8 @@ class _AnalisisPageState extends State<AnalisisPage> {
                           child: _AiCard(analysis: a),
                         )),
                       const SizedBox(height: 4),
-                      if (ai.predictions.isNotEmpty) _PredictionCard(predictions: ai.predictions),
+                      if (ai.predictions.isNotEmpty)
+                        _PredictionCard(predictions: ai.predictions),
                       const SizedBox(height: 12),
                       _GatewayCard(wsConnected: sensor.wsConnected),
                     ],
