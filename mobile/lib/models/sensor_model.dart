@@ -159,11 +159,11 @@ class AiPrediction {
         nodeId: j['node_id'] ?? '',
         currentTemp: double.tryParse(j['current_temp']?.toString() ?? '0') ?? 0,
         predictedTemp: double.tryParse(j['predicted_temp']?.toString() ?? '0') ?? 0,
-        movingAverage: double.tryParse(j['moving_average']?.toString() ?? '0') ?? 0,
-        zScore: double.tryParse(j['z_score']?.toString() ?? '0') ?? 0,
+        movingAverage: double.tryParse(j['avg_temp']?.toString() ?? '0') ?? 0,
+        zScore: double.tryParse(j['z_score_temp']?.toString() ?? '0') ?? 0,
         riskLevel: j['risk_level'] ?? 'LOW',
         confidence: j['confidence'] ?? 0,
-        trend: j['trend'] ?? 'stable',
+        trend: j['trend_direction'] ?? 'stable',
       );
 }
 

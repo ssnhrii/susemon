@@ -16,6 +16,16 @@ class ApiService {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
+  // Helper — handle response, auto-throw jika 401
+  Map<String, dynamic> _parse(http.Response res) {
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode == 401) {
+      clearToken(); // token expired, paksa logout
+      throw Exception('Sesi habis, silakan login kembali');
+    }
+    return body;
+  }
+
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String ipAddress, String accessCode) async {
@@ -46,8 +56,7 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.sensorNodes}'),
       headers: _headers,
     ).timeout(const Duration(seconds: 10));
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true) {
       return (body['data'] as List).map((e) => SensorNode.fromJson(e)).toList();
     }
@@ -59,8 +68,7 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.sensorLatest}'),
       headers: _headers,
     ).timeout(const Duration(seconds: 10));
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true) {
       return (body['data'] as List).map((e) => SensorReading.fromJson(e)).toList();
     }
@@ -70,9 +78,8 @@ class ApiService {
   Future<List<SensorReading>> getSensorHistory(String nodeId, {String period = '24h', int limit = 50}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.sensorData}/$nodeId')
         .replace(queryParameters: {'period': period, 'limit': '$limit'});
-
     final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 10));
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true) {
       return (body['data'] as List).map((e) => SensorReading.fromJson(e)).toList();
     }
@@ -82,12 +89,9 @@ class ApiService {
   Future<SensorStats> getStatistics({String period = '24h'}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.sensorStats}')
         .replace(queryParameters: {'period': period});
-
     final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 10));
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (body['success'] == true) {
-      return SensorStats.fromJson(body['data']);
-    }
+    final body = _parse(res);
+    if (body['success'] == true) return SensorStats.fromJson(body['data']);
     return SensorStats.empty();
   }
 
@@ -98,8 +102,7 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.aiAnalysis}'),
       headers: _headers,
     ).timeout(const Duration(seconds: 10));
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true) {
       return (body['data'] as List).map((e) => AiAnalysis.fromJson(e)).toList();
     }
@@ -112,7 +115,7 @@ class ApiService {
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.aiSummary}'),
         headers: _headers,
       ).timeout(const Duration(seconds: 10));
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final body = _parse(res);
       if (body['success'] == true) return body['data'] as Map<String, dynamic>;
     } catch (_) {}
     return null;
@@ -123,22 +126,18 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.aiPrediction}/$nodeId'),
       headers: _headers,
     ).timeout(const Duration(seconds: 10));
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true && body['data'] != null) {
       return AiPrediction.fromJson(body['data']);
     }
     return null;
   }
 
-  // ── Notifications ─────────────────────────────────────────────────────────
-
   Future<List<AppNotification>> getNotifications({bool unreadOnly = false}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.notifications}')
         .replace(queryParameters: {'unread_only': '$unreadOnly', 'limit': '30'});
-
     final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 10));
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final body = _parse(res);
     if (body['success'] == true) {
       return (body['data'] as List).map((e) => AppNotification.fromJson(e)).toList();
     }
@@ -150,18 +149,16 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.unreadCount}'),
       headers: _headers,
     ).timeout(const Duration(seconds: 5));
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (body['success'] == true) {
-      return body['data']['count'] ?? 0;
-    }
+    final body = _parse(res);
+    if (body['success'] == true) return body['data']['count'] ?? 0;
     return 0;
   }
 
   Future<void> markAsRead(int id) async {
-    await http.put(
+    final res = await http.put(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.notifications}/$id/read'),
       headers: _headers,
     ).timeout(const Duration(seconds: 5));
+    _parse(res); // trigger 401 check
   }
 }

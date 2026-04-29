@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional, List, Any
 
@@ -21,6 +21,28 @@ class SensorDataIn(BaseModel):
     node_id: str
     temperature: float
     humidity: float
+
+    @field_validator('temperature')
+    @classmethod
+    def validate_temp(cls, v):
+        if not (-40 <= v <= 125):
+            raise ValueError(f'Suhu {v} di luar range sensor (-40 s/d 125°C)')
+        return round(v, 2)
+
+    @field_validator('humidity')
+    @classmethod
+    def validate_hum(cls, v):
+        if not (0 <= v <= 100):
+            raise ValueError(f'Kelembapan {v} di luar range (0-100%)')
+        return round(v, 2)
+
+    @field_validator('node_id')
+    @classmethod
+    def validate_node_id(cls, v):
+        import re
+        if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', v):
+            raise ValueError('node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)')
+        return v
 
 class SensorReading(BaseModel):
     id: int

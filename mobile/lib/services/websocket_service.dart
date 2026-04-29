@@ -83,8 +83,8 @@ class WebSocketService {
     if (_disposed) return;
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: _retrySeconds), _tryConnect);
-    // Exponential backoff: 5s → 10s → 20s → 40s → max 60s
-    if (_retrySeconds < 60) _retrySeconds = (_retrySeconds * 2).clamp(5, 60);
+    // Exponential backoff: 5s → 10s → 20s → 40s → max 60s, lalu tetap 60s (tidak berhenti)
+    _retrySeconds = (_retrySeconds * 2).clamp(5, 60);
   }
 
   void disconnect() {

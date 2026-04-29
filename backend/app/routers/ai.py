@@ -63,7 +63,19 @@ async def _maybe_notify(node_id: str, result: dict):
 async def get_prediction(node_id: str, limit: int = Query(30), user=Depends(get_current_user)):
     readings = await _get_readings(node_id, limit)
     if len(readings) < 3:
-        return {"success": True, "data": {"node_id": node_id, "status": "INSUFFICIENT_DATA", "confidence": 0}}
+        # Return struktur lengkap agar Flutter tidak crash saat parse
+        return {"success": True, "data": {
+            "node_id": node_id, "status": "INSUFFICIENT_DATA",
+            "anomaly_detected": False, "overheating_risk": False,
+            "risk_level": "LOW", "confidence": 0,
+            "current_temp": 0.0, "predicted_temp": 0.0,
+            "avg_temp": 0.0, "ewma_temp": 0.0,
+            "z_score_temp": 0.0, "z_score_humidity": 0.0,
+            "trend_per_hour": 0.0, "trend_direction": "stable",
+            "isolation_forest_score": 0.0,
+            "methods_used": [], "insights": ["Data belum cukup (min 3 pembacaan)"],
+            "signal_count": 0,
+        }}
 
     result = analyze_node(readings, THRESHOLDS)
 

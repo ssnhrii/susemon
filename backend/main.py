@@ -237,8 +237,28 @@ app.include_router(ai_router.router)
 
 @app.get("/api/health")
 async def health():
-    return {"success": True, "message": "SUSEMON FastAPI is running",
-            "timestamp": datetime.now().isoformat()}
+    from app.services.mqtt_listener import _mqtt_client
+    mqtt_ok = _mqtt_client is not None and _mqtt_client.is_connected()
+    db_ok = False
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "SUSEMON FastAPI is running",
+        "status": {
+            "mqtt": "connected" if mqtt_ok else "disconnected",
+            "database": "connected" if db_ok else "disconnected",
+            "websocket_clients": len(manager.active),
+        },
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 @app.websocket("/ws")
