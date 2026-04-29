@@ -102,11 +102,12 @@ async def init_db():
                     INDEX idx_node_time (node_id, prediction_time)
                 )
             """)
-            # Seed users
+            # Seed users — ip_address diisi saat login pertama kali
+            # '127.0.0.1' untuk akses lokal, '0.0.0.0' untuk akses jaringan (wildcard)
             await cur.execute("""
                 INSERT IGNORE INTO users (ip_address, access_code, name) VALUES
-                ('127.0.0.1', 'ADMIN123', 'Admin Local'),
-                ('192.168.1.100', 'SUSEMON2026', 'Admin Network')
+                ('127.0.0.1', 'ADMIN123',    'Admin Local'),
+                ('0.0.0.0',   'SUSEMON2026', 'Admin Network')
             """)
             # Seed nodes
             await cur.execute("""

@@ -19,18 +19,24 @@ class ApiService {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> login(String ipAddress, String accessCode) async {
-    final res = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
-      headers: _headers,
-      body: jsonEncode({'ip_address': ipAddress, 'access_code': accessCode}),
-    ).timeout(const Duration(seconds: 10));
+    try {
+      final res = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
+        headers: _headers,
+        body: jsonEncode({'ip_address': ipAddress, 'access_code': accessCode}),
+      ).timeout(const Duration(seconds: 15));
 
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode == 200 && body['success'] == true) {
-      _token = body['data']['token'];
-      return body['data'];
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 200 && body['success'] == true) {
+        _token = body['data']['token'];
+        return body['data'];
+      }
+      throw Exception(body['message'] ?? 'Login gagal');
+    } on http.ClientException catch (e) {
+      throw Exception('Tidak dapat terhubung ke server: ${e.message}');
+    } on Exception {
+      rethrow;
     }
-    throw Exception(body['message'] ?? 'Login gagal');
   }
 
   // ── Sensors ───────────────────────────────────────────────────────────────
@@ -98,6 +104,18 @@ class ApiService {
       return (body['data'] as List).map((e) => AiAnalysis.fromJson(e)).toList();
     }
     return [];
+  }
+
+  Future<Map<String, dynamic>?> getAiSummary() async {
+    try {
+      final res = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.aiSummary}'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 10));
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (body['success'] == true) return body['data'] as Map<String, dynamic>;
+    } catch (_) {}
+    return null;
   }
 
   Future<AiPrediction?> getAiPrediction(String nodeId) async {

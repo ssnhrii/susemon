@@ -3,9 +3,12 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from collections import defaultdict
+import time
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import init_db, close_pool, get_pool
@@ -46,6 +49,21 @@ class ConnectionManager:
             self.active.remove(ws)
 
 manager = ConnectionManager()
+
+# ── Simple Rate Limiter ───────────────────────────────────────────────────────
+
+_rate_store: dict = defaultdict(list)
+RATE_LIMIT = 60       # max requests
+RATE_WINDOW = 60      # per 60 detik
+
+def check_rate_limit(ip: str) -> bool:
+    now = time.time()
+    hits = [t for t in _rate_store[ip] if now - t < RATE_WINDOW]
+    _rate_store[ip] = hits
+    if len(hits) >= RATE_LIMIT:
+        return False
+    _rate_store[ip].append(now)
+    return True
 
 # ── Background tasks ──────────────────────────────────────────────────────────
 
@@ -187,12 +205,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — batasi ke origin yang dikenal
+_cors_origins = settings.CORS_ORIGINS
+if "*" in _cors_origins:
+    # Development fallback — izinkan semua
+    _cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization", "X-Api-Key"],
 )
+
+# Rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(ip):
+        return JSONResponse(
+            status_code=429,
+            content={"success": False, "message": "Terlalu banyak request, coba lagi nanti"}
+        )
+    return await call_next(request)
 
 app.include_router(auth.router)
 app.include_router(sensors.router)
@@ -208,6 +243,11 @@ async def health():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # Rate limit WebSocket connections per IP
+    ip = ws.client.host if ws.client else "unknown"
+    if not check_rate_limit(ip):
+        await ws.close(code=1008)  # Policy violation
+        return
     await manager.connect(ws)
     await ws.send_text(json.dumps({
         "type": "connection",

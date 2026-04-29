@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# Environment — JANGAN push .env asli
+backend/.env
+
+# Mosquitto
+backend/mosquitto_config/
+
+# Flutter build
+mobile/build/
+mobile/.dart_tool/
+mobile/.idea/
+mobile/android/.gradle/
+mobile/android/.kotlin/
+mobile/android/local.properties
+mobile/android/app/google-services.json
+mobile/ios/Flutter/ephemeral/
+mobile/ios/.symlinks/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+
+# Node (sisa lama)
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+*.iml

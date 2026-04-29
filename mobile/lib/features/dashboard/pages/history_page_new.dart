@@ -13,21 +13,45 @@ class HistoryPageNew extends StatefulWidget {
 }
 
 class _HistoryPageNewState extends State<HistoryPageNew> {
-  String _nodeId = 'A1';
+  String _nodeId = '';
   String _period = '24h';
   List<SensorReading> _history = [];
   bool _loading = false;
+  List<String> _nodes = [];
 
-  final _nodes   = ['A1', 'B2', 'C3', 'D4'];
   final _periods = {'24h': '24 Jam', '7d': '7 Hari', '30d': '30 Hari'};
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fetch());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Ambil node IDs dari data sensor real (bukan hardcode)
+      final sensor = context.read<SensorProvider>();
+      final ids = sensor.latest.map((r) => r.nodeId).toList();
+      if (ids.isNotEmpty) {
+        setState(() {
+          _nodes  = ids;
+          _nodeId = ids.first;
+        });
+        _fetch();
+      } else {
+        // Fallback: fetch latest dulu, lalu ambil node IDs
+        sensor.refresh().then((_) {
+          final freshIds = context.read<SensorProvider>().latest.map((r) => r.nodeId).toList();
+          if (freshIds.isNotEmpty && mounted) {
+            setState(() {
+              _nodes  = freshIds;
+              _nodeId = freshIds.first;
+            });
+            _fetch();
+          }
+        });
+      }
+    });
   }
 
   Future<void> _fetch() async {
+    if (_nodeId.isEmpty) return;
     setState(() => _loading = true);
     try {
       final data = await context.read<SensorProvider>().getHistory(_nodeId, period: _period);
@@ -97,11 +121,18 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
         const SizedBox(height: 12),
         Row(children: [
           // Node selector
-          Expanded(child: _selector(
-            value: _nodeId,
-            items: {for (var n in _nodes) n: 'Node $n'},
-            onChanged: (v) { setState(() => _nodeId = v!); _fetch(); },
-          )),
+          Expanded(child: _nodes.isEmpty
+            ? Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(color: AppColors.bgCardAlt, borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.cardBorder)),
+                child: const Text('Memuat node...', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              )
+            : _selector(
+                value: _nodeId,
+                items: {for (var n in _nodes) n: 'Node $n'},
+                onChanged: (v) { setState(() => _nodeId = v!); _fetch(); },
+              )),
           const SizedBox(width: 10),
           // Period selector
           Expanded(child: _selector(

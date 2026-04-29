@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/app_provider.dart';
 import '../dashboard/main_layout.dart';
@@ -12,9 +13,21 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _ipCtrl   = TextEditingController(text: '127.0.0.1');
-  final _codeCtrl = TextEditingController(text: 'ADMIN123');
+  final _ipCtrl   = TextEditingController();
+  final _codeCtrl = TextEditingController();
+  final _storage  = const FlutterSecureStorage();
   bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Isi field IP dari IP terakhir yang berhasil login
+    _storage.read(key: 'server_ip').then((ip) {
+      if (ip != null && ip.isNotEmpty && mounted) {
+        _ipCtrl.text = ip;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -86,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     // IP Address field
                     _field('IP Address', _ipCtrl, Icons.router_outlined, false,
-                        hint: '192.168.1.100'),
+                        hint: 'Contoh: 192.168.1.100'),
                     const SizedBox(height: 14),
 
                     // Access Code field
@@ -156,8 +169,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text('Akun Default', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
                     ]),
                     const SizedBox(height: 8),
-                    _hintRow('IP', '127.0.0.1'),
-                    _hintRow('Code', 'ADMIN123'),
+                    _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
+                    _hintRow('Jaringan', '[IP laptop]  ·  SUSEMON2026'),
                   ],
                 ),
               ),

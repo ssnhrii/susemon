@@ -77,11 +77,11 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
                     _buildSection('Sistem', Icons.tune, [_buildIntervalRow()]),
                     const SizedBox(height: 14),
                     _buildSection('Tentang', Icons.info_outline, [
-                      _infoRow('Versi', '1.0.0'),
+                      _infoRow('Versi', '2.0.0'),
                       _infoRow('ID Proyek', 'PBL-TRPL412'),
                       _infoRow('Institusi', 'Politeknik Negeri Batam'),
                       _infoRow('Teknologi', 'Flutter + LoRa + AI'),
-                      _infoRow('Backend', 'Node.js + WebSocket'),
+                      _infoRow('Backend', 'Python FastAPI + WebSocket'),
                     ]),
                     const SizedBox(height: 20),
                     // Logout button

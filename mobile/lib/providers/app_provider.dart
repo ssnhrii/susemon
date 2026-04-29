@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/sensor_model.dart';
 import '../services/api_service.dart';
+import '../services/api_config.dart';
 import '../services/websocket_service.dart';
 
 // ── Auth Provider ─────────────────────────────────────────────────────────────
 
 class AuthProvider extends ChangeNotifier {
   final ApiService _api;
+  final _storage = const FlutterSecureStorage();
   bool _loggedIn = false;
   String? _userName;
   bool _loading = false;
@@ -26,12 +28,16 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      // Set IP ke ApiConfig sebelum request — ini yang fix masalah IP berubah
+      ApiConfig.setHost(ipAddress);
+
       final data = await _api.login(ipAddress, accessCode);
       _userName = data['user']?['name'] ?? ipAddress;
       _loggedIn = true;
-      // Persist token
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', _api.token ?? '');
+
+      // Simpan token + IP ke secure storage
+      await _storage.write(key: 'token', value: _api.token ?? '');
+      await _storage.write(key: 'server_ip', value: ipAddress);
       return true;
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
@@ -43,9 +49,14 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> tryAutoLogin() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await _storage.read(key: 'token');
+    final ip    = await _storage.read(key: 'server_ip');
+
     if (token != null && token.isNotEmpty) {
+      // Restore IP yang terakhir dipakai
+      if (ip != null && ip.isNotEmpty) {
+        ApiConfig.setHost(ip);
+      }
       _api.setToken(token);
       _loggedIn = true;
       notifyListeners();
@@ -56,8 +67,8 @@ class AuthProvider extends ChangeNotifier {
     _api.clearToken();
     _loggedIn = false;
     _userName = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
+    await _storage.delete(key: 'token');
+    // Tidak hapus server_ip supaya field login terisi otomatis
     notifyListeners();
   }
 }

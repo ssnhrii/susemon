@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 from app.core.database import get_pool
-from app.core.security import get_current_user
+from app.core.security import get_current_user, verify_gateway_key
 from app.models.schemas import SensorDataIn
 
 router = APIRouter(prefix="/api/sensors", tags=["sensors"])
@@ -50,6 +50,10 @@ async def get_sensor_data(
     period: str = Query("24h"),
     user=Depends(get_current_user)
 ):
+    # Validasi node_id — hanya alfanumerik + dash/underscore
+    import re
+    if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', node_id):
+        raise HTTPException(status_code=400, detail="node_id tidak valid")
     time_filter = {
         "24h": "AND timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)",
         "7d":  "AND timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
@@ -102,8 +106,8 @@ async def get_statistics(
 
 
 @router.post("/data")
-async def add_sensor_data(body: SensorDataIn):
-    """Endpoint untuk LoRa gateway — tidak butuh auth"""
+async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
+    """Endpoint untuk LoRa gateway — dilindungi API key (X-Api-Key header)"""
     status = "AMAN"
     if body.temperature > 40 or body.humidity > 80:
         status = "BERBAHAYA"

@@ -6,6 +6,7 @@ import json
 import asyncio
 import threading
 import logging
+import re
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
@@ -42,17 +43,19 @@ def set_ws_manager(manager):
     _ws_manager = manager
 
 
-def _on_connect(client, userdata, flags, rc, properties=None):
+def _on_connect(client, userdata, flags, reason_code, properties=None):
+    # Kompatibel v1 (rc int) dan v2 (ReasonCode object)
+    rc = reason_code if isinstance(reason_code, int) else (0 if str(reason_code) == "Success" else 1)
     if rc == 0:
         client.subscribe(settings.MQTT_TOPIC)
         logger.info(f"MQTT connected → subscribed '{settings.MQTT_TOPIC}'")
     else:
-        logger.error(f"MQTT connect failed rc={rc}")
+        logger.error(f"MQTT connect failed: {reason_code}")
 
 
-def _on_disconnect(client, userdata, disconnect_flags, rc, properties=None):
+def _on_disconnect(client, userdata, rc, properties=None):
     if rc != 0:
-        logger.warning(f"MQTT disconnected (rc={rc}), reconnecting...")
+        logger.warning(f"MQTT disconnected ({rc}), auto-reconnect aktif...")
 
 
 def _on_message(client, userdata, msg):
@@ -84,6 +87,16 @@ async def _process(data: dict):
 
     if not node_id:
         logger.warning("MQTT data tanpa node_id, diabaikan")
+        return
+
+    # Validasi node_id — hanya alfanumerik + dash/underscore, max 20 karakter
+    if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', str(node_id)):
+        logger.warning(f"MQTT node_id tidak valid: {node_id!r}, diabaikan")
+        return
+
+    # Validasi range sensor
+    if not (-40 <= temperature <= 125) or not (0 <= humidity <= 100):
+        logger.warning(f"MQTT data out of range: temp={temperature} hum={humidity}, diabaikan")
         return
 
     # ── 1. Simpan data mentah ke DB ──
@@ -230,11 +243,31 @@ def start_mqtt_listener(loop: asyncio.AbstractEventLoop):
     global _loop, _mqtt_client
     _loop = loop
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=settings.MQTT_CLIENT_ID)
+    # Kompatibel paho-mqtt v1 dan v2
+    try:
+        # v2: pakai CallbackAPIVersion
+        client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=settings.MQTT_CLIENT_ID
+        )
+    except AttributeError:
+        # v1: tidak ada CallbackAPIVersion
+        client = mqtt.Client(client_id=settings.MQTT_CLIENT_ID)
+
     client.on_connect    = _on_connect
     client.on_disconnect = _on_disconnect
     client.on_message    = _on_message
     client.reconnect_delay_set(min_delay=2, max_delay=30)
+
+    # Set credentials jika dikonfigurasi
+    if settings.MQTT_USER:
+        client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASS)
+
+    # TLS untuk HiveMQ Cloud (port 8883)
+    if settings.MQTT_USE_TLS:
+        import ssl
+        client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2)
+        logger.info("MQTT TLS enabled")
 
     try:
         client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, keepalive=60)

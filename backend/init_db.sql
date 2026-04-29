@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
 
 -- ── Seed: users ──────────────────────────────────────────────
 INSERT IGNORE INTO users (ip_address, access_code, name) VALUES
-('127.0.0.1',     'ADMIN123',    'Admin Local'),
-('192.168.1.100', 'SUSEMON2026', 'Admin Network');
+('127.0.0.1',  'ADMIN123',    'Admin Local'),
+('0.0.0.0',    'SUSEMON2026', 'Admin Network');
 
 -- ── Seed: sensor nodes ───────────────────────────────────────
 INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES

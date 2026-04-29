@@ -15,10 +15,21 @@ class _AnalisisPageState extends State<AnalisisPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ai = context.read<AiProvider>();
+      final ai     = context.read<AiProvider>();
+      final sensor = context.read<SensorProvider>();
       ai.fetchAnalysis();
-      for (final nodeId in ['A1', 'B2', 'C3', 'D4']) {
+      // Ambil node IDs dari data sensor yang sudah ada (real-time dari API)
+      final nodeIds = sensor.latest.map((r) => r.nodeId).toSet();
+      for (final nodeId in nodeIds) {
         ai.fetchPrediction(nodeId);
+      }
+      // Jika belum ada data sensor, fetch analysis dulu lalu ambil dari sana
+      if (nodeIds.isEmpty) {
+        ai.fetchAnalysis().then((_) {
+          for (final a in context.read<AiProvider>().analysis) {
+            context.read<AiProvider>().fetchPrediction(a.nodeId);
+          }
+        });
       }
     });
   }

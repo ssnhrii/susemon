@@ -10,6 +10,7 @@ class WebSocketService {
   StreamController<Map<String, dynamic>>? _aiController;
   Timer? _reconnectTimer;
   bool _disposed = false;
+  int _retrySeconds = 5;  // exponential backoff
 
   Stream<List<SensorReading>> get stream {
     _controller ??= StreamController<List<SensorReading>>.broadcast();
@@ -23,6 +24,7 @@ class WebSocketService {
 
   void connect() {
     _disposed = false;
+    _retrySeconds = 5;
     _tryConnect();
   }
 
@@ -36,6 +38,7 @@ class WebSocketService {
         onDone: () => _scheduleReconnect(),
         cancelOnError: false,
       );
+      _retrySeconds = 5; // reset on success
     } catch (_) {
       _scheduleReconnect();
     }
@@ -79,7 +82,9 @@ class WebSocketService {
   void _scheduleReconnect() {
     if (_disposed) return;
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), _tryConnect);
+    _reconnectTimer = Timer(Duration(seconds: _retrySeconds), _tryConnect);
+    // Exponential backoff: 5s → 10s → 20s → 40s → max 60s
+    if (_retrySeconds < 60) _retrySeconds = (_retrySeconds * 2).clamp(5, 60);
   }
 
   void disconnect() {

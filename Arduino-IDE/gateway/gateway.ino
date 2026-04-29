@@ -26,19 +26,21 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
 
-// ── Konfigurasi MQTT (default, bisa diubah via portal) ───────────────────────
-#define MQTT_PORT      1883
+// ── Konfigurasi MQTT — HiveMQ Cloud ──────────────────────────────────────────
+#define MQTT_HOST      "53fdb682d08547bfb9177fee6bb08354.s1.eu.hivemq.cloud"
+#define MQTT_PORT      8883
 #define MQTT_TOPIC     "sensor/data"
 #define MQTT_TOPIC_AI  "sensor/ai_result"
 #define MQTT_CLIENT_ID "susemon-gateway"
-#define MQTT_USER      ""   // kosong = tanpa auth
-#define MQTT_PASS      ""   // kosong = tanpa auth
+#define MQTT_USER      "susemon"
+#define MQTT_PASS      "Susemon2026mqtt"
 
 // ── Nama hotspot saat konfigurasi ─────────────────────────────────────────────
 #define AP_NAME     "SUSEMON-Gateway"
@@ -46,7 +48,7 @@
 
 // ── Penyimpanan konfigurasi di flash ──────────────────────────────────────────
 Preferences prefs;
-char mqttServer[40] = "192.168.0.119";  // default IP backend
+char mqttServer[40] = "";  // IP diisi via portal WiFiManager (192.168.4.1)
 
 // ── Pin LoRa — LILYGO LORA32 T22_V1.1 (SX1276) ──────────────────────────────
 // T22_V1.1: SCK=5, MISO=19, MOSI=27, SS=18, RST=14, DIO0=26
@@ -67,9 +69,9 @@ char mqttServer[40] = "192.168.0.119";  // default IP backend
 #define OLED_RESET     -1
 
 // ── Objek ─────────────────────────────────────────────────────────────────────
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-WiFiClient       wifiClient;
-PubSubClient     mqttClient(wifiClient);
+Adafruit_SSD1306  display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+WiFiClientSecure  wifiClient;   // TLS untuk HiveMQ Cloud
+PubSubClient      mqttClient(wifiClient);
 
 // ── Variabel global ───────────────────────────────────────────────────────────
 int    rxCount    = 0;
@@ -110,10 +112,7 @@ void setup() {
   showStatus("NTP sync...");
   delay(2000);
 
-  // MQTT
-  mqttClient.setServer(mqttServer, MQTT_PORT);
-  mqttClient.setBufferSize(512);
-  mqttClient.setCallback(mqttCallback);
+  // MQTT — connect ke HiveMQ Cloud
   connectMQTT();
 
   // LoRa
@@ -351,24 +350,29 @@ void connectMQTT() {
   if (!wifiOk) return;
   showStatus("MQTT...");
 
+  // Set server ke HiveMQ Cloud
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setBufferSize(512);
+  mqttClient.setCallback(mqttCallback);
+
+  // Skip verifikasi sertifikat (cukup untuk project PBL)
+  wifiClient.setInsecure();
+
   int retry = 0;
   while (!mqttClient.connected() && retry < 5) {
-    Serial.printf("[MQTT] Menghubungkan ke %s:%d...\n", mqttServer, MQTT_PORT);
+    Serial.printf("[MQTT] Menghubungkan ke %s:%d...\n", MQTT_HOST, MQTT_PORT);
 
-    bool ok = (strlen(MQTT_USER) > 0)
-      ? mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS)
-      : mqttClient.connect(MQTT_CLIENT_ID);
+    bool ok = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS);
 
     if (ok) {
       mqttOk = true;
-      // Subscribe topic hasil AI dari backend
       mqttClient.subscribe(MQTT_TOPIC_AI);
-      Serial.println("[MQTT] Terhubung!");
+      Serial.println("[MQTT] Terhubung ke HiveMQ Cloud!");
       return;
     }
 
     Serial.printf("[MQTT] Gagal rc=%d, retry %d/5\n", mqttClient.state(), retry + 1);
-    delay(2000);
+    delay(3000);
     retry++;
   }
   mqttOk = false;

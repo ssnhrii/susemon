@@ -6,7 +6,6 @@ load_dotenv()
 class Settings:
     # Server
     PORT: int          = int(os.getenv("PORT", 3000))
-    WS_PORT: int       = int(os.getenv("WS_PORT", 3001))
     NODE_ENV: str      = os.getenv("NODE_ENV", "development")
 
     # Database
@@ -19,9 +18,9 @@ class Settings:
     # JWT
     JWT_SECRET: str    = os.getenv("JWT_SECRET", "susemon_secret_key_2026_pbl_trpl412")
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_HOURS: int = 24
+    JWT_EXPIRE_HOURS: int = 8   # diperpendek dari 24 → 8 jam
 
-    # CORS
+    # CORS — hanya izinkan origin yang dikenal
     CORS_ORIGINS: list = os.getenv("CORS_ORIGIN", "*").split(",")
 
     # AI Thresholds
@@ -33,7 +32,13 @@ class Settings:
     # MQTT
     MQTT_BROKER: str     = os.getenv("MQTT_BROKER", "localhost")
     MQTT_PORT: int       = int(os.getenv("MQTT_PORT", 1883))
+    MQTT_USE_TLS: bool   = os.getenv("MQTT_USE_TLS", "false").lower() == "true"
     MQTT_TOPIC: str      = os.getenv("MQTT_TOPIC", "sensor/data")
     MQTT_CLIENT_ID: str  = os.getenv("MQTT_CLIENT_ID", "susemon-fastapi")
+    MQTT_USER: str       = os.getenv("MQTT_USER", "")
+    MQTT_PASS: str       = os.getenv("MQTT_PASS", "")
+
+    # API Key untuk gateway endpoint
+    GATEWAY_API_KEY: str = os.getenv("GATEWAY_API_KEY", "gw-susemon-2026-pbl412")
 
 settings = Settings()
