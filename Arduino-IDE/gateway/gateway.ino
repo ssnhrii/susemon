@@ -27,6 +27,7 @@
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <WiFiUdp.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -71,6 +72,13 @@ char mqttServer[40] = "";  // IP diisi via portal WiFiManager (192.168.4.1)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 WiFiClient       wifiClient;
 PubSubClient     mqttClient(wifiClient);
+WiFiUDP          udp;
+
+#define UDP_BEACON_PORT  47808
+#define UDP_TIMEOUT_MS   15000   // 15 detik tanpa beacon → coba reconnect
+
+unsigned long lastBeaconMs = 0;
+bool          beaconFound  = false;
 
 // ── Variabel global ───────────────────────────────────────────────────────────
 int    rxCount    = 0;
@@ -83,6 +91,9 @@ int    lastRssi   = 0;
 bool   wifiOk     = false;
 bool   mqttOk     = false;
 unsigned long lastDisplayUpdate = 0;
+unsigned long mqttFailStart     = 0;   // waktu mulai MQTT gagal
+bool          mqttEverConnected = false; // pernah konek MQTT atau belum
+#define MQTT_TIMEOUT_RESET  180000     // 3 menit gagal → reset WiFi
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,6 +121,17 @@ void setup() {
   configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
   showStatus("NTP sync...");
   delay(2000);
+
+  // Mulai UDP listener untuk auto-detect IP backend
+  udp.begin(UDP_BEACON_PORT);
+  showStatus("Cari backend...");
+
+  // Tunggu beacon dari backend (max 10 detik)
+  unsigned long waitStart = millis();
+  while (millis() - waitStart < 10000) {
+    if (listenBeacon()) break;
+    delay(200);
+  }
 
   // MQTT
   connectMQTT();
@@ -163,9 +185,46 @@ void loop() {
   // Reconnect MQTT jika putus
   if (!mqttClient.connected()) {
     mqttOk = false;
+
+    // Catat waktu mulai gagal
+    if (mqttFailStart == 0) {
+      mqttFailStart = millis();
+      Serial.println("[MQTT] Mulai hitung timeout...");
+    }
+
+    // Jika sudah 3 menit tidak bisa konek MQTT → reset WiFi
+    if (millis() - mqttFailStart >= MQTT_TIMEOUT_RESET) {
+      Serial.println("[MQTT] Timeout 3 menit! Reset WiFi...");
+      showStatus("MQTT timeout!\nReset WiFi...");
+      delay(2000);
+      WiFiManager wm;
+      wm.resetSettings();
+      prefs.clear();
+      delay(500);
+      ESP.restart();
+    }
+
+    // Tampilkan countdown di OLED
+    unsigned long elapsed   = millis() - mqttFailStart;
+    unsigned long remaining = (MQTT_TIMEOUT_RESET - elapsed) / 1000;
+    Serial.printf("[MQTT] Gagal, reset dalam %lus\n", remaining);
+
     connectMQTT();
+  } else {
+    // MQTT konek — reset timer
+    mqttOk           = true;
+    mqttEverConnected = true;
+    mqttFailStart    = 0;
   }
   mqttClient.loop();
+
+  // Cek beacon UDP dari backend (auto-detect IP)
+  if (listenBeacon()) {
+    // IP backend mungkin berubah, reconnect MQTT jika perlu
+    if (!mqttClient.connected()) {
+      connectMQTT();
+    }
+  }
 
   // Cek paket LoRa masuk
   int packetSize = LoRa.parsePacket();
@@ -289,6 +348,37 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+// ── UDP Beacon — auto-detect IP backend ──────────────────────────────────────
+
+bool listenBeacon() {
+  int pktSize = udp.parsePacket();
+  if (pktSize <= 0) return false;
+
+  char buf[128] = {0};
+  udp.read(buf, sizeof(buf) - 1);
+
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, buf) != DeserializationError::Ok) return false;
+  if (!doc["susemon"].as<bool>()) return false;
+
+  const char* ip = doc["ip"];
+  if (!ip || strlen(ip) == 0) return false;
+
+  // Cek apakah IP berubah
+  if (String(ip) != String(mqttServer)) {
+    strncpy(mqttServer, ip, sizeof(mqttServer));
+    prefs.putString("mqtt_server", mqttServer);
+    Serial.printf("[Beacon] Backend ditemukan: %s\n", mqttServer);
+    // Reconnect MQTT dengan IP baru
+    if (mqttClient.connected()) mqttClient.disconnect();
+    mqttOk = false;
+  }
+
+  lastBeaconMs = millis();
+  beaconFound  = true;
+  return true;
+}
+
 // ── WiFi via WiFiManager ──────────────────────────────────────────────────────
 
 void connectWiFi() {
@@ -383,182 +473,116 @@ void connectMQTT() {
 
 // ── OLED ──────────────────────────────────────────────────────────────────────
 
-// Helper: gambar ikon sinyal WiFi (3 bar)
-void drawWifiIcon(int x, int y, bool ok) {
-  if (ok) {
-    display.drawCircle(x+4, y+7, 7, SSD1306_WHITE);
-    display.drawCircle(x+4, y+7, 4, SSD1306_WHITE);
-    display.fillCircle(x+4, y+7, 1, SSD1306_WHITE);
-    // Hapus bagian bawah lingkaran agar terlihat seperti ikon WiFi
-    display.fillRect(x, y+7, 9, 4, SSD1306_BLACK);
-  } else {
-    // X untuk tidak terhubung
-    display.drawLine(x, y, x+6, y+6, SSD1306_WHITE);
-    display.drawLine(x+6, y, x, y+6, SSD1306_WHITE);
-  }
-}
-
-// Helper: gambar ikon MQTT (titik + gelombang)
-void drawMqttIcon(int x, int y, bool ok) {
-  if (ok) {
-    display.fillCircle(x+3, y+5, 2, SSD1306_WHITE);
-    display.drawLine(x+5, y+3, x+8, y+1, SSD1306_WHITE);
-    display.drawLine(x+5, y+5, x+9, y+5, SSD1306_WHITE);
-    display.drawLine(x+5, y+7, x+8, y+9, SSD1306_WHITE);
-  } else {
-    display.drawLine(x, y+2, x+8, y+8, SSD1306_WHITE);
-    display.drawLine(x+8, y+2, x, y+8, SSD1306_WHITE);
-  }
-}
-
 void updateDisplay() {
   display.clearDisplay();
-
-  // ── Header bar ──
-  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
-  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(3, 3);
-  display.print("SUSEMON");
-  display.setCursor(55, 3);
-  display.print("GATEWAY");
-  // Indikator live (titik kecil berkedip)
-  static bool blink = false;
-  blink = !blink;
-  if (blink) display.fillCircle(122, 6, 3, SSD1306_BLACK);
-  else       display.drawCircle(122, 6, 3, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  // ── Status WiFi & MQTT ──
-  display.setCursor(2, 16);
-  display.print("WiFi");
-  display.setCursor(2, 25);
-  if (wifiOk) {
-    display.print(WiFi.SSID().substring(0, 10));
+  // ══ BARIS 1: Header ══
+  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setCursor(2, 2);
+  display.print("SUSEMON  GATEWAY");
+  static bool blink = false; blink = !blink;
+  display.fillRect(119, 2, 7, 7, blink ? SSD1306_BLACK : SSD1306_WHITE);
+  display.setTextColor(SSD1306_WHITE);
+
+  // ══ BARIS 2-6: Info ══
+  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
+
+  display.setCursor(0, 14);
+  display.print("WiFi  : ");
+  display.print(wifiOk ? WiFi.SSID().substring(0, 16) : "Offline");
+
+  display.setCursor(0, 24);
+  display.print("MQTT  : ");
+  if (mqttOk) {
+    display.print("Connected");
+  } else if (mqttFailStart > 0) {
+    unsigned long remaining = (MQTT_TIMEOUT_RESET - (millis() - mqttFailStart)) / 1000;
+    display.print("Gagal  reset:");
+    display.print(remaining);
+    display.print("s");
+  } else {
+    display.print("Offline");
+  }
+
+  display.setCursor(0, 34);
+  display.print("Server: ");
+  if (strlen(mqttServer) > 0) {
+    display.print(mqttServer);
+    if (beaconFound) display.print(" *");
   } else {
     display.print("--");
   }
 
-  // Separator vertikal
-  display.drawLine(63, 14, 63, 36, SSD1306_WHITE);
+  display.drawLine(0, 43, 127, 43, SSD1306_WHITE);
 
-  display.setCursor(67, 16);
-  display.print("MQTT");
-  display.setCursor(67, 25);
-  display.print(mqttOk ? "Connected" : "Offline");
-
-  // Status dot
-  display.fillCircle(58, 19, 3, wifiOk  ? SSD1306_WHITE : SSD1306_BLACK);
-  if (!wifiOk) display.drawCircle(58, 19, 3, SSD1306_WHITE);
-  display.fillCircle(122, 19, 3, mqttOk ? SSD1306_WHITE : SSD1306_BLACK);
-  if (!mqttOk) display.drawCircle(122, 19, 3, SSD1306_WHITE);
-
-  // ── Divider ──
-  display.drawLine(0, 37, 127, 37, SSD1306_WHITE);
-
-  // ── Data sensor terakhir ──
-  display.setCursor(2, 40);
-  display.print("Node:");
+  display.setCursor(0, 45);
+  display.print("Node  : ");
   display.print(lastNodeId);
+  display.print("  RSSI=");
+  display.print(lastRssi);
 
-  display.setCursor(2, 50);
-  display.setTextSize(1);
-  // Suhu besar
-  display.setTextSize(1);
+  display.setCursor(0, 55);
   display.print("T:");
-  display.setTextSize(2);
-  display.setCursor(14, 47);
-  display.printf("%.1f", lastTemp);
-  display.setTextSize(1);
-  display.setCursor(50, 47);
-  display.print("C");
-
-  // Kelembapan
-  display.setCursor(65, 47);
-  display.print("H:");
-  display.setCursor(77, 47);
-  display.setTextSize(2);
-  display.printf("%.0f", lastHum);
-  display.setTextSize(1);
-  display.setCursor(113, 47);
-  display.print("%");
-
-  // ── Footer: statistik ──
-  display.drawLine(0, 58, 127, 58, SSD1306_WHITE);
-  display.setCursor(0, 60);
-  display.printf("RX:%d TX:%d Lost:%d RSSI:%d", rxCount, txCount, lostCount, lastRssi);
+  display.print(String(lastTemp, 1));
+  display.print("C  H:");
+  display.print(String((int)lastHum));
+  display.print("%  RX=");
+  display.print(rxCount);
 
   display.display();
 }
 
 void showSplash() {
   display.clearDisplay();
-
-  // Border luar
   display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
   display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
-
-  // Judul besar
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(14, 8);
-  display.println("SUSEMON");
-
-  // Garis tengah
+  display.print("SUSEMON");
   display.drawLine(10, 28, 118, 28, SSD1306_WHITE);
-
   display.setTextSize(1);
   display.setCursor(18, 33);
-  display.println("LoRa  Gateway");
-  display.setCursor(10, 45);
-  display.println("PBL-TRPL412  v2.0");
-  display.setCursor(22, 55);
-  display.println("Inisialisasi...");
-
+  display.print("LoRa  Gateway");
+  display.setCursor(10, 43);
+  display.print("LORA32 T22_V1.1");
+  display.setCursor(22, 53);
+  display.print("PBL-TRPL412 v2.0");
   display.display();
   delay(2500);
 }
 
 void showStatus(String msg) {
   display.clearDisplay();
-
-  // Header
-  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(3, 3);
+  display.setCursor(2, 2);
   display.print("SUSEMON GATEWAY");
   display.setTextColor(SSD1306_WHITE);
-
-  // Loading bar animasi
+  display.setCursor(0, 18);
+  display.print(msg);
   static int barW = 0;
-  barW = (barW + 8) % 128;
-  display.drawRect(0, 50, 128, 8, SSD1306_WHITE);
-  display.fillRect(0, 50, barW, 8, SSD1306_WHITE);
-
-  display.setCursor(4, 20);
-  display.println(msg);
-
+  barW = (barW + 10) % 128;
+  display.drawRect(0, 54, 128, 10, SSD1306_WHITE);
+  display.fillRect(0, 54, barW, 10, SSD1306_WHITE);
   display.display();
 }
 
 void showError(String msg) {
   display.clearDisplay();
-
-  // Header merah (inverted)
-  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(3, 3);
+  display.setCursor(2, 2);
   display.print("!! ERROR !!");
   display.setTextColor(SSD1306_WHITE);
-
-  // Border
-  display.drawRect(0, 15, 128, 49, SSD1306_WHITE);
-
-  display.setCursor(4, 22);
-  display.println(msg);
-
+  display.drawRect(0, 14, 128, 50, SSD1306_WHITE);
+  display.setCursor(4, 20);
+  display.print(msg);
   display.display();
 }
 

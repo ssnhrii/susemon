@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime
 from collections import defaultdict
@@ -66,6 +67,30 @@ def check_rate_limit(ip: str) -> bool:
     return True
 
 # ── Background tasks ──────────────────────────────────────────────────────────
+
+async def udp_beacon():
+    """Broadcast IP backend ke jaringan setiap 5 detik via UDP port 47808"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setblocking(False)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+
+    msg = json.dumps({"susemon": True, "ip": local_ip, "port": settings.PORT}).encode()
+    logger.info(f"UDP Beacon started — broadcasting {local_ip}:{settings.PORT}")
+
+    while True:
+        try:
+            sock.sendto(msg, ("255.255.255.255", 47808))
+        except Exception as e:
+            logger.debug(f"UDP beacon error: {e}")
+        await asyncio.sleep(5)
+
 
 async def broadcast_sensor_data():
     """Kirim data sensor terbaru ke semua WS client setiap 3 detik"""
@@ -188,10 +213,12 @@ async def lifespan(app: FastAPI):
     # Background tasks
     t1 = asyncio.create_task(broadcast_sensor_data())
     t2 = asyncio.create_task(auto_ai_scan())
+    t3 = asyncio.create_task(udp_beacon())
     logger.info("SUSEMON FastAPI started")
     yield
     t1.cancel()
     t2.cancel()
+    t3.cancel()
     await close_pool()
     logger.info("SUSEMON FastAPI stopped")
 

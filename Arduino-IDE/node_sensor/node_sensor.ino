@@ -255,94 +255,67 @@ void setLEDWaiting() {
 void updateDisplay() {
   bool isOffline = (aiStatus != "MENUNGGU") &&
                    (millis() - lastDownlink > DOWNLINK_TIMEOUT);
-
-  // Tentukan status color (inverted block untuk status)
   bool isDanger  = (aiStatus == "BERBAHAYA");
-  bool isWaspada = (aiStatus == "WASPADA");
-  bool isAman    = (aiStatus == "AMAN");
 
   display.clearDisplay();
-
-  // ── Header bar ──
-  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
-  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(3, 3);
-  display.print("SUSEMON");
-  display.setCursor(55, 3);
-  display.print("NODE  ");
-  display.print(NODE_ID);
-  // Blink dot
-  static bool blink = false;
-  blink = !blink;
-  if (blink) display.fillCircle(122, 6, 3, SSD1306_BLACK);
-  else       display.drawCircle(122, 6, 3, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  // ── Suhu besar (kiri) ──
-  display.setTextSize(3);
-  display.setCursor(0, 16);
-  display.printf("%.1f", temperature);
-  display.setTextSize(1);
-  display.setCursor(74, 16);
-  display.print("o");   // degree symbol
-  display.setTextSize(2);
-  display.setCursor(80, 20);
-  display.print("C");
+  // ══ BARIS 1: Header ══
+  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setCursor(2, 2);
+  display.print("SUSEMON  NODE " NODE_ID);
+  static bool blink = false; blink = !blink;
+  display.fillRect(119, 2, 7, 7, blink ? SSD1306_BLACK : SSD1306_WHITE);
+  display.setTextColor(SSD1306_WHITE);
 
-  // ── Kelembapan (kanan bawah suhu) ──
-  display.setTextSize(1);
-  display.setCursor(74, 36);
-  display.printf("H:%.0f%%", humidity);
+  // ══ BARIS 2: Suhu & Humid ══
+  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
+  display.setCursor(0, 14);
+  display.print("Suhu  : ");
+  display.print(String(temperature, 1));
+  display.print(" C");
 
-  // ── Divider vertikal ──
-  display.drawLine(70, 14, 70, 44, SSD1306_WHITE);
+  display.setCursor(0, 24);
+  display.print("Humid : ");
+  display.print(String((int)humidity));
+  display.print(" %");
 
-  // ── TX counter kecil ──
-  display.setCursor(74, 46);
-  display.printf("TX:%d", txCount);
+  // ══ BARIS 3: LoRa TX ══
+  display.setCursor(0, 34);
+  display.print("LoRa  : TX=");
+  display.print(txCount);
+  display.print("  Fail=");
+  display.print(failCount);
 
-  // ── Divider horizontal ──
-  display.drawLine(0, 44, 127, 44, SSD1306_WHITE);
+  // ══ Divider ══
+  display.drawLine(0, 43, 127, 43, SSD1306_WHITE);
 
-  // ── Status AI bar (bawah) ──
+  // ══ BARIS 4: Status AI ══
+  display.setCursor(0, 45);
+  display.print("AI    : ");
   if (aiStatus == "MENUNGGU") {
-    // Animasi titik-titik menunggu
-    static int dotCount = 0;
-    dotCount = (dotCount + 1) % 4;
-    display.setCursor(2, 50);
-    display.print("AI: Menunggu");
-    for (int i = 0; i < dotCount; i++) display.print(".");
+    display.print("Menunggu...");
+  } else if (isOffline) {
+    display.print(aiStatus + " (offline)");
   } else {
-    // Status block — inverted jika berbahaya
-    if (isDanger) {
-      display.fillRect(0, 45, 128, 19, SSD1306_WHITE);
-      display.setTextColor(SSD1306_BLACK);
-    }
-    display.setCursor(2, 50);
-    display.print("AI:");
-    display.setCursor(22, 50);
     display.print(aiStatus);
-    if (aiConf > 0) {
-      display.setCursor(85, 50);
-      display.printf("%d%%", aiConf);
-    }
-    // Offline indicator
-    if (isOffline) {
-      display.setCursor(2, 57);
-      display.print("(offline)");
-    } else {
-      display.setCursor(2, 57);
-      display.print(aiRisk);
-    }
-    display.setTextColor(SSD1306_WHITE);
+    display.print("  ");
+    display.print(aiConf);
+    display.print("%");
   }
 
-  // ── Fail counter (pojok kanan bawah) ──
-  if (failCount > 0) {
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(100, 57);
-    display.printf("F:%d", failCount);
+  // ══ BARIS 5: Risk ══
+  display.setCursor(0, 55);
+  display.print("Risk  : ");
+  if (aiStatus == "MENUNGGU") {
+    display.print("--");
+  } else {
+    display.print(aiRisk);
+    if (isDanger) {
+      display.print(" !");
+    }
   }
 
   display.display();
@@ -350,46 +323,35 @@ void updateDisplay() {
 
 void showSplash() {
   display.clearDisplay();
-
-  // Border ganda
   display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
   display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
-
-  // Judul
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(14, 8);
   display.print("SUSEMON");
-
   display.drawLine(10, 28, 118, 28, SSD1306_WHITE);
-
   display.setTextSize(1);
   display.setCursor(22, 33);
-  display.print("Node Sensor ");
-  display.print(NODE_ID);
-  display.setCursor(18, 43);
-  display.print("DHT22  LoRa 923MHz");
+  display.print("Node Sensor " NODE_ID);
+  display.setCursor(14, 43);
+  display.print("DHT22 | LoRa 923MHz");
   display.setCursor(22, 53);
   display.print("PBL-TRPL412 v2.0");
-
   display.display();
   delay(2500);
 }
 
 void showError(String msg) {
   display.clearDisplay();
-
-  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(3, 3);
+  display.setCursor(2, 2);
   display.print("!! ERROR !!");
   display.setTextColor(SSD1306_WHITE);
-
-  display.drawRect(0, 15, 128, 49, SSD1306_WHITE);
-  display.setCursor(4, 22);
-  display.println(msg);
-
+  display.drawRect(0, 14, 128, 50, SSD1306_WHITE);
+  display.setCursor(4, 20);
+  display.print(msg);
   display.display();
 }
 
