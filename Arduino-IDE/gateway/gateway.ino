@@ -88,7 +88,7 @@ unsigned long lastDisplayUpdate = 0;
 
 void setup() {
   Serial.begin(115200);
-  pinMode(0, INPUT_PULLUP); // Tombol BOOT untuk reset konfigurasi
+  pinMode(38, INPUT_PULLUP); // IO38 untuk reset konfigurasi WiFi
 
   // OLED
   Wire.begin(OLED_SDA, OLED_SCL);
@@ -146,10 +146,10 @@ void loop() {
     }
   }
 
-  // Tekan tombol BOOT (GPIO0) 3 detik → reset konfigurasi WiFi
-  if (digitalRead(0) == LOW) {
+  // Tekan tombol IO38 selama 3 detik → reset konfigurasi WiFi
+  if (digitalRead(38) == LOW) {
     delay(3000);
-    if (digitalRead(0) == LOW) {
+    if (digitalRead(38) == LOW) {
       Serial.println("[Config] Reset WiFi...");
       showStatus("Reset WiFi...");
       WiFiManager wm;
@@ -309,16 +309,24 @@ void connectWiFi() {
 
   // Tampilkan info di OLED
   display.clearDisplay();
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("SETUP  MODE");
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("Konfigurasi WiFi:");
-  display.println("");
-  display.println("1. Konek ke WiFi:");
-  display.println("   " AP_NAME);
-  display.println("2. Buka browser:");
-  display.println("   192.168.4.1");
-  display.println("3. Isi WiFi & IP");
+  display.setCursor(2, 16);
+  display.print("1. WiFi: ");
+  display.println(AP_NAME);
+  display.setCursor(2, 26);
+  display.print("   Pass: susemon123");
+  display.setCursor(2, 36);
+  display.print("2. Buka: 192.168.4.1");
+  display.setCursor(2, 46);
+  display.print("3. Isi WiFi + IP");
+  display.drawLine(0, 56, 128, 56, SSD1306_WHITE);
+  display.setCursor(2, 58);
+  display.print("Reset: tahan IO38");
   display.display();
 
   wm.setAPStaticIPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
@@ -375,74 +383,182 @@ void connectMQTT() {
 
 // ── OLED ──────────────────────────────────────────────────────────────────────
 
+// Helper: gambar ikon sinyal WiFi (3 bar)
+void drawWifiIcon(int x, int y, bool ok) {
+  if (ok) {
+    display.drawCircle(x+4, y+7, 7, SSD1306_WHITE);
+    display.drawCircle(x+4, y+7, 4, SSD1306_WHITE);
+    display.fillCircle(x+4, y+7, 1, SSD1306_WHITE);
+    // Hapus bagian bawah lingkaran agar terlihat seperti ikon WiFi
+    display.fillRect(x, y+7, 9, 4, SSD1306_BLACK);
+  } else {
+    // X untuk tidak terhubung
+    display.drawLine(x, y, x+6, y+6, SSD1306_WHITE);
+    display.drawLine(x+6, y, x, y+6, SSD1306_WHITE);
+  }
+}
+
+// Helper: gambar ikon MQTT (titik + gelombang)
+void drawMqttIcon(int x, int y, bool ok) {
+  if (ok) {
+    display.fillCircle(x+3, y+5, 2, SSD1306_WHITE);
+    display.drawLine(x+5, y+3, x+8, y+1, SSD1306_WHITE);
+    display.drawLine(x+5, y+5, x+9, y+5, SSD1306_WHITE);
+    display.drawLine(x+5, y+7, x+8, y+9, SSD1306_WHITE);
+  } else {
+    display.drawLine(x, y+2, x+8, y+8, SSD1306_WHITE);
+    display.drawLine(x+8, y+2, x, y+8, SSD1306_WHITE);
+  }
+}
+
 void updateDisplay() {
   display.clearDisplay();
+
+  // ── Header bar ──
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("SUSEMON");
+  display.setCursor(55, 3);
+  display.print("GATEWAY");
+  // Indikator live (titik kecil berkedip)
+  static bool blink = false;
+  blink = !blink;
+  if (blink) display.fillCircle(122, 6, 3, SSD1306_BLACK);
+  else       display.drawCircle(122, 6, 3, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  // Baris 1: Header
+  // ── Status WiFi & MQTT ──
+  display.setCursor(2, 16);
+  display.print("WiFi");
+  display.setCursor(2, 25);
+  if (wifiOk) {
+    display.print(WiFi.SSID().substring(0, 10));
+  } else {
+    display.print("--");
+  }
+
+  // Separator vertikal
+  display.drawLine(63, 14, 63, 36, SSD1306_WHITE);
+
+  display.setCursor(67, 16);
+  display.print("MQTT");
+  display.setCursor(67, 25);
+  display.print(mqttOk ? "Connected" : "Offline");
+
+  // Status dot
+  display.fillCircle(58, 19, 3, wifiOk  ? SSD1306_WHITE : SSD1306_BLACK);
+  if (!wifiOk) display.drawCircle(58, 19, 3, SSD1306_WHITE);
+  display.fillCircle(122, 19, 3, mqttOk ? SSD1306_WHITE : SSD1306_BLACK);
+  if (!mqttOk) display.drawCircle(122, 19, 3, SSD1306_WHITE);
+
+  // ── Divider ──
+  display.drawLine(0, 37, 127, 37, SSD1306_WHITE);
+
+  // ── Data sensor terakhir ──
+  display.setCursor(2, 40);
+  display.print("Node:");
+  display.print(lastNodeId);
+
+  display.setCursor(2, 50);
   display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("SUSEMON  Gateway");
-  display.drawLine(0, 9, 127, 9, SSD1306_WHITE);
+  // Suhu besar
+  display.setTextSize(1);
+  display.print("T:");
+  display.setTextSize(2);
+  display.setCursor(14, 47);
+  display.printf("%.1f", lastTemp);
+  display.setTextSize(1);
+  display.setCursor(50, 47);
+  display.print("C");
 
-  // Baris 2: Status koneksi
-  display.setCursor(0, 12);
-  display.print("WiFi:");
-  display.print(wifiOk ? "OK " : "X  ");
-  display.print("MQTT:");
-  display.println(mqttOk ? "OK" : "X");
+  // Kelembapan
+  display.setCursor(65, 47);
+  display.print("H:");
+  display.setCursor(77, 47);
+  display.setTextSize(2);
+  display.printf("%.0f", lastHum);
+  display.setTextSize(1);
+  display.setCursor(113, 47);
+  display.print("%");
 
-  // Baris 3: Node & data terakhir
-  display.setCursor(0, 23);
-  display.printf("Node: %-4s  RSSI:%d", lastNodeId.c_str(), lastRssi);
-
-  display.setCursor(0, 33);
-  display.printf("T:%.1fC  H:%.1f%%", lastTemp, lastHum);
-
-  // Baris 4: Statistik paket
-  display.setCursor(0, 44);
-  display.printf("RX:%-4d TX:%-4d", rxCount, txCount);
-
-  display.setCursor(0, 54);
-  display.printf("Lost:%-3d  %s", lostCount, mqttServer);
+  // ── Footer: statistik ──
+  display.drawLine(0, 58, 127, 58, SSD1306_WHITE);
+  display.setCursor(0, 60);
+  display.printf("RX:%d TX:%d Lost:%d RSSI:%d", rxCount, txCount, lostCount, lastRssi);
 
   display.display();
 }
 
 void showSplash() {
   display.clearDisplay();
+
+  // Border luar
+  display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+  display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
+
+  // Judul besar
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(5, 5);
+  display.setCursor(14, 8);
   display.println("SUSEMON");
+
+  // Garis tengah
+  display.drawLine(10, 28, 118, 28, SSD1306_WHITE);
+
   display.setTextSize(1);
-  display.setCursor(5, 30);
-  display.println("LoRa Gateway");
-  display.setCursor(5, 44);
+  display.setCursor(18, 33);
+  display.println("LoRa  Gateway");
+  display.setCursor(10, 45);
+  display.println("PBL-TRPL412  v2.0");
+  display.setCursor(22, 55);
   display.println("Inisialisasi...");
+
   display.display();
-  delay(2000);
+  delay(2500);
 }
 
 void showStatus(String msg) {
   display.clearDisplay();
+
+  // Header
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("SUSEMON GATEWAY");
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("SUSEMON Gateway");
-  display.drawLine(0, 9, 127, 9, SSD1306_WHITE);
-  display.setCursor(0, 20);
+
+  // Loading bar animasi
+  static int barW = 0;
+  barW = (barW + 8) % 128;
+  display.drawRect(0, 50, 128, 8, SSD1306_WHITE);
+  display.fillRect(0, 50, barW, 8, SSD1306_WHITE);
+
+  display.setCursor(4, 20);
   display.println(msg);
+
   display.display();
 }
 
 void showError(String msg) {
   display.clearDisplay();
+
+  // Header merah (inverted)
+  display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
+  display.setCursor(3, 3);
+  display.print("!! ERROR !!");
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 20);
-  display.println("ERROR:");
+
+  // Border
+  display.drawRect(0, 15, 128, 49, SSD1306_WHITE);
+
+  display.setCursor(4, 22);
   display.println(msg);
+
   display.display();
 }
 
