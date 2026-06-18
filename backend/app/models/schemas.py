@@ -64,6 +64,25 @@ class SensorNode(BaseModel):
     current_humidity: Optional[float] = None
     current_status: Optional[str] = None
 
+class SensorNodeCreate(BaseModel):
+    node_id: str
+    node_name: str
+    location: str
+    is_active: bool = True
+
+    @field_validator('node_id')
+    @classmethod
+    def validate_node_id(cls, v):
+        import re
+        if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', v):
+            raise ValueError('node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)')
+        return v
+
+class SensorNodeUpdate(BaseModel):
+    node_name: Optional[str] = None
+    location: Optional[str] = None
+    is_active: Optional[bool] = None
+
 
 # ── Notification ──────────────────────────────────────────────────────────────
 

@@ -1,348 +1,142 @@
-# 🚀 SUSEMON Backend API
+# SUSEMON Backend API v2.1
 
-Backend API untuk aplikasi SUSEMON (Suhu dan Kelembapan Server Monitoring) - Smart Server Monitoring System dengan AI.
+Backend untuk **SUSEMON** (Suhu dan Kelembapan Server Monitoring) — sistem monitoring server room berbasis IoT dengan AI.
 
-## 📋 Fitur
+## Versi
 
-- ✅ RESTful API dengan Express.js
-- ✅ MySQL Database
-- ✅ JWT Authentication
-- ✅ WebSocket untuk real-time updates
-- ✅ AI Prediction (Moving Average + Z-score)
-- ✅ Sensor data management
-- ✅ Notification system
-- ✅ CORS enabled
+| Komponen | Versi |
+|---|---|
+| Backend API | 2.1.0 |
+| Python | 3.10+ |
+| FastAPI | 0.111.0 |
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: MySQL
-- **WebSocket**: ws
-- **Authentication**: JWT (jsonwebtoken)
-- **ORM**: mysql2 (Promise-based)
+- **Framework**: Python FastAPI + Uvicorn
+- **Database**: MySQL 8.0 (aiomysql async pool)
+- **Auth**: JWT (python-jose) + bcrypt (passlib)
+- **MQTT**: paho-mqtt (subscribe dari LoRa Gateway)
+- **AI**: scikit-learn (Isolation Forest) + Moving Average + EWMA + Z-score
+- **WebSocket**: FastAPI native WebSocket (real-time ke Flutter)
 
-## 📦 Installation
-
-### 1. Install Dependencies
+## Instalasi
 
 ```bash
-cd "susemon backend"
-npm install
+cd backend
+pip install -r requirements.txt
 ```
 
-### 2. Setup Database
-
-Pastikan MySQL sudah running, lalu jalankan:
+## Setup Database
 
 ```bash
-npm run init-db
+Get-Content init_db.sql | mysql -u root
 ```
 
-Script ini akan:
-- Create database `susemon_db`
-- Create 6 tables (users, sensor_nodes, sensor_data, notifications, ai_predictions, system_logs)
-- Insert sample data
-- Create 2 default users
-
-### 3. Configure Environment
-
-Copy `.env.example` ke `.env` dan sesuaikan:
-
-```env
-PORT=3000
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=susemon_db
-```
-
-### 4. Start Server
-
-**Development mode (with nodemon):**
+Lalu jalankan migrasi password (hash bcrypt untuk data lama):
 ```bash
-npm run dev
+python migrate_passwords.py
 ```
 
-**Production mode:**
+## Konfigurasi
+
+Copy `.env.example` ke `.env`:
 ```bash
-npm start
+copy .env.example .env
 ```
 
-Server akan running di:
-- HTTP API: `http://localhost:3000`
-- WebSocket: `ws://localhost:3001`
+Variabel penting:
+- `JWT_SECRET` — ganti dengan string acak 64 karakter
+- `GATEWAY_API_KEY` — ganti dengan key acak
+- `MQTT_USER`, `MQTT_PASS` — sesuai konfigurasi Mosquitto
+- `DATA_RETENTION_DAYS` — retensi data sensor (default 90 hari)
 
-## 📡 API Endpoints
-
-### Authentication
-
-#### POST `/api/auth/login`
-Login dengan IP Address dan Access Code
-
-**Request:**
-```json
-{
-  "ip_address": "127.0.0.1",
-  "access_code": "ADMIN123"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Login berhasil",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id": 1,
-      "ip_address": "127.0.0.1",
-      "name": "Admin Local"
-    }
-  }
-}
-```
-
-#### GET `/api/auth/verify`
-Verify JWT token (requires Bearer token)
-
-### Sensors
-
-#### GET `/api/sensors/nodes`
-Get all sensor nodes with latest data
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "node_id": "A1",
-      "node_name": "Node Sensor A1",
-      "location": "Rack Server Utama",
-      "current_temp": 28.5,
-      "current_humidity": 65.2,
-      "current_status": "AMAN"
-    }
-  ]
-}
-```
-
-#### GET `/api/sensors/latest`
-Get latest data from all nodes
-
-#### GET `/api/sensors/data/:node_id?period=24h&limit=20`
-Get sensor data history
-
-**Query params:**
-- `period`: 24h, 7d, 30d
-- `limit`: number of records
-
-#### POST `/api/sensors/data`
-Add new sensor data (from LoRa gateway)
-
-**Request:**
-```json
-{
-  "node_id": "A1",
-  "temperature": 28.5,
-  "humidity": 65.2
-}
-```
-
-#### GET `/api/sensors/statistics?period=24h`
-Get statistics (avg, max, min, counts)
-
-### AI Prediction
-
-#### GET `/api/ai/prediction/:node_id`
-Get AI prediction for specific node
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "node_id": "A1",
-    "current_temp": 28.5,
-    "predicted_temp": "29.2",
-    "moving_average": "28.7",
-    "z_score": "0.45",
-    "risk_level": "LOW",
-    "confidence": 91,
-    "trend": "increasing"
-  }
-}
-```
-
-#### GET `/api/ai/analysis`
-Get AI analysis for all nodes
-
-### Notifications
-
-#### GET `/api/notifications?limit=20&unread_only=false`
-Get notifications
-
-#### GET `/api/notifications/unread-count`
-Get unread notification count
-
-#### PUT `/api/notifications/:id/read`
-Mark notification as read
-
-## 🔌 WebSocket
-
-Connect to `ws://localhost:3001` untuk real-time updates.
-
-**Message Types:**
-
-1. **Connection**
-```json
-{
-  "type": "connection",
-  "message": "Connected to SUSEMON WebSocket server",
-  "timestamp": "2026-04-18T10:30:00.000Z"
-}
-```
-
-2. **Sensor Update** (every 3 seconds)
-```json
-{
-  "type": "sensor_update",
-  "data": [
-    {
-      "node_id": "A1",
-      "temperature": 28.5,
-      "humidity": 65.2,
-      "status": "AMAN",
-      "node_name": "Node Sensor A1",
-      "location": "Rack Server Utama"
-    }
-  ],
-  "timestamp": "2026-04-18T10:30:00.000Z"
-}
-```
-
-## 🗄️ Database Schema
-
-### Tables
-
-1. **users** - User authentication
-2. **sensor_nodes** - Sensor node configuration
-3. **sensor_data** - Sensor readings
-4. **notifications** - System notifications
-5. **ai_predictions** - AI prediction results
-6. **system_logs** - System logs
-
-### Default Users
-
-| IP Address | Access Code | Name |
-|------------|-------------|------|
-| 127.0.0.1 | ADMIN123 | Admin Local |
-| 192.168.1.100 | SUSEMON2026 | Admin Network |
-
-## 🧪 Testing
-
-### Test Health Check
+Generate secret:
 ```bash
-curl http://localhost:3000/api/health
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### Test Login
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"ip_address":"127.0.0.1","access_code":"ADMIN123"}'
-```
-
-### Test Get Nodes (with token)
-```bash
-curl http://localhost:3000/api/sensors/nodes \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE"
-```
-
-## 📊 AI Algorithm
-
-Backend menggunakan algoritma sederhana untuk prediksi:
-
-1. **Moving Average**: Rata-rata 10 data terakhir
-2. **Z-Score**: Deteksi anomali berdasarkan standar deviasi
-3. **Linear Trend**: Prediksi suhu 30 menit kedepan
-
-**Risk Levels:**
-- `HIGH`: Z-score > 2.5 (Confidence: 94%)
-- `MEDIUM`: Z-score > 1.5 (Confidence: 87%)
-- `LOW`: Z-score < 1.5 (Confidence: 91%)
-
-## 🔧 Development
-
-### Project Structure
-```
-susemon backend/
-├── src/
-│   ├── config/
-│   │   └── database.js          # Database connection
-│   ├── controllers/
-│   │   ├── authController.js    # Authentication logic
-│   │   ├── sensorController.js  # Sensor CRUD
-│   │   ├── aiController.js      # AI prediction
-│   │   └── notificationController.js
-│   ├── middleware/
-│   │   └── authMiddleware.js    # JWT verification
-│   ├── models/                  # (Future: Sequelize models)
-│   ├── routes/
-│   │   ├── index.js            # Main router
-│   │   ├── authRoutes.js
-│   │   ├── sensorRoutes.js
-│   │   ├── aiRoutes.js
-│   │   └── notificationRoutes.js
-│   ├── services/               # (Future: Business logic)
-│   ├── utils/
-│   │   └── initDatabase.js     # Database initialization
-│   └── server.js               # Main server file
-├── .env                        # Environment variables
-├── .env.example               # Environment template
-├── package.json
-└── README.md
-```
-
-## 🚀 Deployment
-
-### Production Checklist
-
-- [ ] Set `NODE_ENV=production`
-- [ ] Use strong `JWT_SECRET`
-- [ ] Configure proper database credentials
-- [ ] Enable HTTPS
-- [ ] Set up process manager (PM2)
-- [ ] Configure firewall
-- [ ] Set up monitoring
-- [ ] Enable database backups
-
-### PM2 Deployment
+## Menjalankan
 
 ```bash
-npm install -g pm2
-pm2 start src/server.js --name susemon-api
-pm2 save
-pm2 startup
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 3000 --reload
 ```
 
-## 📝 License
+## MQTT Broker (Mosquitto)
 
-MIT License - PBL-TRPL412 Politeknik Negeri Bali
+```bash
+mosquitto -c mosquitto.conf
+```
 
-## 👥 Team
+Buat password file:
+```bash
+mosquitto_passwd -c mosquitto_config/passwd susemon
+```
 
-- **Project ID**: PBL-TRPL412
-- **Institution**: Politeknik Negeri Bali
-- **Program**: TRPL 4C Malam
+## Keamanan
 
----
+- JWT token dengan expiry 8 jam + unique JTI
+- bcrypt hashing untuk semua access code
+- Brute force protection: lockout 5 menit setelah 5x gagal
+- Rate limiting: 120 req/60 detik per IP
+- Role-based access control: admin / pic
+- Security headers: X-Content-Type-Options, X-Frame-Options, dll
+- Timing-safe API key comparison
 
-**Status**: ✅ Production Ready
-**Version**: 1.0.0
-**Last Update**: 18 April 2026
+## API Endpoints
+
+| Method | Endpoint | Auth | Keterangan |
+|--------|----------|------|------------|
+| POST | `/api/auth/login` | — | Login IP + Access Code |
+| GET | `/api/auth/verify` | JWT | Verifikasi token |
+| POST | `/api/auth/logout` | JWT | Logout |
+| GET | `/api/users` | Admin | List semua user |
+| POST | `/api/users` | Admin | Buat user baru |
+| PUT | `/api/users/{id}` | Admin | Update user |
+| DELETE | `/api/users/{id}` | Admin | Hapus user |
+| GET | `/api/users/me` | JWT | Info user sendiri |
+| GET | `/api/sensors/nodes` | JWT | Semua node + data terkini |
+| GET | `/api/sensors/latest` | JWT | Pembacaan terbaru semua node |
+| GET | `/api/sensors/data/{node_id}` | JWT | Riwayat data node |
+| GET | `/api/sensors/statistics` | JWT | Statistik agregat |
+| GET | `/api/sensors/export/{node_id}` | JWT | Export CSV |
+| POST | `/api/sensors/data` | API Key | Submit data dari gateway |
+| GET | `/api/ai/analysis` | JWT | Analisis AI semua node |
+| GET | `/api/ai/prediction/{node_id}` | JWT | Prediksi AI satu node |
+| GET | `/api/ai/summary` | JWT | Status global sistem |
+| GET | `/api/notifications` | JWT | Daftar notifikasi |
+| PUT | `/api/notifications/read-all` | JWT | Tandai semua dibaca |
+| PUT | `/api/notifications/{id}/read` | JWT | Tandai satu dibaca |
+| DELETE | `/api/notifications/{id}` | JWT | Hapus notifikasi |
+| GET | `/api/health` | — | Status komponen sistem |
+| WS | `/ws` | — | WebSocket real-time |
+| GET | `/api/docs` | — | Swagger UI |
+
+## Akun Default
+
+| IP | Access Code | Role |
+|----|-------------|------|
+| `127.0.0.1` | `ADMIN123` | admin |
+| `0.0.0.0` | `SUSEMON2026` | admin |
+
+## Changelog
+
+### v2.1.0 (2026)
+- bcrypt hashing untuk access code
+- Brute force protection dengan lockout
+- JWT secret kuat + JTI unique
+- Timing-safe API key comparison
+- Security headers middleware
+- Input validation di users router
+- Login attempt logging
+- Export CSV sensor data
+- Mark all notifications as read
+- Data retention cleanup harian
+
+### v2.0.0 (2026)
+- Multi-user dengan role admin/pic
+- WebSocket real-time
+- AI Engine (Moving Avg + EWMA + Z-Score + Isolation Forest)
+- Hysteresis untuk status sensor
+- UDP beacon auto-discovery
+- Rate limiting per IP

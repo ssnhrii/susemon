@@ -1,14 +1,13 @@
-# SUSEMON — Arduino IDE Programs
+# SUSEMON — Arduino Firmware v2.1
 
-Firmware untuk hardware IoT SUSEMON (PBL-TRPL412).
+Firmware untuk hardware IoT SUSEMON (PBL-TRPL412) — Politeknik Negeri Batam.
 
-## Struktur
+## Versi
 
-```
-Arduino-IDE/
-├── node_sensor/node_sensor.ino   ← TTGO LoRa32 + DHT22 + LED + Buzzer
-└── gateway/gateway.ino           ← TTGO LoRa32 + OLED only
-```
+| File | Versi | Hardware |
+|---|---|---|
+| `node_sensor.ino` | v2.1 | LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276) |
+| `gateway.ino` | v2.1 | LILYGO LORA32 T22_V1.1 (ESP32 + SX1276) |
 
 ---
 
@@ -18,41 +17,37 @@ Arduino-IDE/
 
 | Komponen | Keterangan |
 |---|---|
-| TTGO LoRa32 V2.1 | ESP32 + SX1276 + OLED built-in |
+| LILYGO T3 V1.6.1 | ESP32-PICO-D4 + SX1276 + OLED built-in |
 | DHT22 | Sensor suhu & kelembapan |
 | LED Hijau | Status AMAN |
 | LED Kuning | Status WASPADA |
 | LED Merah | Status BERBAHAYA |
-| LED Biru | Indikator kirim LoRa |
+| LED Biru | Indikator TX LoRa |
 | Buzzer | Alarm kondisi BERBAHAYA |
 
-### Wiring
+### Wiring T3 V1.6.1
 
 ```
-DHT22 VCC   → 3.3V
-DHT22 GND   → GND
 DHT22 DATA  → GPIO 13
-
 LED Hijau   → GPIO 2   (+ resistor 220Ω ke GND)
 LED Kuning  → GPIO 4   (+ resistor 220Ω ke GND)
-LED Merah   → GPIO 12  (+ resistor 220Ω ke GND)
-LED Biru    → GPIO 15  (+ resistor 220Ω ke GND)
-
-Buzzer +    → GPIO 32
-Buzzer -    → GND
-
-OLED & LoRa → built-in TTGO LoRa32
+LED Merah   → GPIO 15  (+ resistor 220Ω ke GND)
+LED Biru    → GPIO 25  (+ resistor 220Ω ke GND)
+Buzzer +    → GPIO 14
+OLED SDA    → GPIO 21  (built-in)
+OLED SCL    → GPIO 22  (built-in)
+LoRa RST    → GPIO 23  (built-in)
 ```
 
 ### Logika LED & Buzzer
 
-| Kondisi | LED | Buzzer |
+| Status AI | LED | Buzzer |
 |---|---|---|
-| Suhu < 35°C & Hum < 70% | Hijau ON | Diam |
-| Suhu 35–40°C atau Hum ≥ 70% | Kuning ON | 2 beep pendek (saat masuk) |
-| Suhu ≥ 40°C atau Hum ≥ 80% | Merah ON | 3 beep panjang (setiap interval) |
-| Kirim LoRa | Biru kedip | - |
-| Error startup | Semua OFF | 1 beep panjang |
+| AMAN | Hijau ON | 1 beep pendek (saat kembali aman) |
+| WASPADA | Kuning ON | 2 beep (saat masuk waspada) |
+| BERBAHAYA | Merah ON | 3 beep panjang |
+| TX LoRa | Biru kedip | - |
+| Menunggu AI | Semua OFF | - |
 
 ---
 
@@ -62,26 +57,30 @@ OLED & LoRa → built-in TTGO LoRa32
 
 | Komponen | Keterangan |
 |---|---|
-| TTGO LoRa32 V2.1 | ESP32 + SX1276 + OLED built-in |
+| LILYGO LORA32 T22_V1.1 | ESP32 + SX1276 + OLED built-in |
 | WiFi | Built-in ESP32 |
 
-### Wiring
+### Wiring T22_V1.1
 
 ```
 Semua built-in — tidak ada wiring tambahan
+OLED SDA → GPIO 4  (berbeda dari T3!)
+OLED SCL → GPIO 15 (berbeda dari T3!)
+LoRa RST → GPIO 14
 ```
 
-### OLED Gateway menampilkan
+### Konfigurasi via WiFiManager
 
-```
-SUSEMON  Gateway
-─────────────────
-WiFi:OK  MQTT:OK
-Node: A1   RSSI:-52
-T:28.5C  H:62.0%
-RX:47   TX:47
-Lost:0   923MHz SF7
-```
+Pertama kali nyala, gateway buka hotspot `SUSEMON-Gateway` (pass: `susemon123`).
+Buka browser → `192.168.4.1` → isi:
+- WiFi SSID + Password
+- IP Backend Server
+- MQTT Username
+- MQTT Password
+
+Konfigurasi disimpan di flash — tidak perlu diulang setelah restart.
+
+Reset konfigurasi: tahan tombol IO38 selama 3 detik.
 
 ---
 
@@ -97,7 +96,8 @@ Tools → Board Manager → cari **esp32** → Install **esp32 by Espressif Syst
 
 ### 2. Pilih Board
 
-Tools → Board → ESP32 Arduino → **TTGO LoRa32-OLED**
+- Node Sensor: Tools → Board → **TTGO LoRa32-OLED** (atau ESP32 PICO-D4)
+- Gateway: Tools → Board → **TTGO LoRa32-OLED**
 
 Settings:
 - Upload Speed: 921600
@@ -114,24 +114,14 @@ Settings:
 | Adafruit GFX Library | Adafruit | Keduanya |
 | ArduinoJson | Benoit Blanchon | Keduanya |
 | PubSubClient | Nick O'Leary | Gateway |
+| WiFiManager | tzapu | Gateway |
 
 ### 4. Konfigurasi node_sensor.ino
 
 ```cpp
-#define NODE_ID       "A1"   // A1 / B2 / C3 / D4
-#define SEND_INTERVAL 5000   // interval kirim ms
-#define TEMP_WARNING  35.0   // threshold waspada
-#define TEMP_DANGER   40.0   // threshold berbahaya
-```
-
-### 5. Konfigurasi gateway.ino
-
-```cpp
-#define WIFI_SSID     "NamaWiFi"
-#define WIFI_PASSWORD "PasswordWiFi"
-#define MQTT_SERVER   "192.168.1.100"  // IP server backend
-#define MQTT_PORT     1883
-#define MQTT_TOPIC    "sensor/data"
+#define NODE_ID          "A1"    // A1 / B2 / C3 / D4
+#define SEND_INTERVAL    5000    // interval kirim (ms)
+#define DOWNLINK_TIMEOUT 60000   // timeout downlink (ms)
 ```
 
 ---
@@ -139,22 +129,51 @@ Settings:
 ## Alur Data
 
 ```
-DHT22 → Node Sensor
-          ↓ LoRa 923MHz (JSON)
-        Gateway
-          ↓ WiFi → MQTT broker
-        Backend FastAPI
-          ↓ WebSocket
-        Flutter App
+DHT22 → Node Sensor (T3 V1.6.1)
+           ↓ LoRa 923MHz SF7 (JSON + timestamp UTC)
+         Gateway (T22_V1.1)
+           ↓ WiFi → MQTT broker (topic: sensor/data)
+         Backend FastAPI
+           ↓ AI Analysis
+           ↓ MQTT downlink (topic: sensor/ai_result)
+         Gateway
+           ↓ LoRa downlink
+         Node Sensor → LED + Buzzer + OLED
+           ↓ WebSocket
+         Flutter App
 ```
 
-## Format JSON MQTT
+## Format JSON Uplink (Node → Gateway → Backend)
 
 ```json
 {
   "node_id": "A1",
   "temperature": 28.5,
   "humidity": 62.0,
-  "timestamp": "2026-04-21T10:30:00+07:00"
+  "timestamp": "2026-04-21T10:30:00Z",
+  "rssi": -52
 }
 ```
+
+## Format JSON Downlink (Backend → Gateway → Node)
+
+```json
+{
+  "node_id": "A1",
+  "status": "AMAN",
+  "risk": "LOW",
+  "confidence": 91
+}
+```
+
+## Changelog
+
+### v2.1 (2026)
+- MQTT credentials dari flash via WiFiManager (tidak hardcoded)
+- Timestamp UTC ISO8601 dari NTP
+- RSSI ditambahkan ke payload uplink
+- Buffer JSON downlink diperbesar (192 bytes)
+- RSSI downlink ditampilkan di OLED node sensor
+
+### v2.0 (2026)
+- Rilis awal dengan LoRa + MQTT + AI downlink

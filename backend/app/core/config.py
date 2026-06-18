@@ -40,4 +40,6 @@ class Settings:
     # API Key
     GATEWAY_API_KEY: str = os.getenv("GATEWAY_API_KEY", "gw-susemon-2026-pbl412")
 
+    # Data retention
+    DATA_RETENTION_DAYS: int = int(os.getenv("DATA_RETENTION_DAYS", 90))
 settings = Settings()

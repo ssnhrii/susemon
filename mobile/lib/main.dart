@@ -25,6 +25,7 @@ class SusemonApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        Provider<ApiService>(create: (_) => api),
         ChangeNotifierProvider(create: (_) => AuthProvider(api)),
         ChangeNotifierProvider(create: (_) => SensorProvider(api, ws)),
         ChangeNotifierProvider(create: (_) => NotificationProvider(api)),
@@ -41,6 +42,15 @@ class SusemonApp extends StatelessWidget {
             surface: Color(0xFF111827),
           ),
           useMaterial3: true,
+          // Smooth page transitions
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
+          // Ripple effect
+          splashFactory: InkRipple.splashFactory,
         ),
         home: const SplashScreen(),
       ),

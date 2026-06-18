@@ -37,6 +37,15 @@ async def unread_count(user=Depends(get_current_user)):
     return {"success": True, "data": {"count": count}}
 
 
+@router.put("/read-all")
+async def mark_all_read(user=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("UPDATE notifications SET is_read=TRUE WHERE is_read=FALSE")
+    return {"success": True, "message": "Semua notifikasi ditandai sebagai dibaca"}
+
+
 @router.put("/{notif_id}/read")
 async def mark_read(notif_id: int, user=Depends(get_current_user)):
     pool = await get_pool()
@@ -44,3 +53,12 @@ async def mark_read(notif_id: int, user=Depends(get_current_user)):
         async with conn.cursor() as cur:
             await cur.execute("UPDATE notifications SET is_read=TRUE WHERE id=%s", (notif_id,))
     return {"success": True, "message": "Notifikasi ditandai sebagai dibaca"}
+
+
+@router.delete("/{notif_id}")
+async def delete_notification(notif_id: int, user=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM notifications WHERE id=%s", (notif_id,))
+    return {"success": True, "message": "Notifikasi dihapus"}

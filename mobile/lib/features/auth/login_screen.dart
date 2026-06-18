@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/app_provider.dart';
+import '../../shared/widgets/interactive.dart';
 import '../dashboard/main_layout.dart';
 
 /// V380 Pro style login: IP Address + Access Code
@@ -133,18 +135,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity, height: 50,
-                      child: ElevatedButton(
-                        onPressed: auth.loading ? null : _login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
+                      child: TapScale(
+                        scale: 0.97,
+                        onTap: auth.loading ? null : () {
+                          HapticFeedback.lightImpact();
+                          _login();
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: auth.loading
+                                ? AppColors.primary.withOpacity(0.5)
+                                : AppColors.primary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: auth.loading
+                                ? const SizedBox(width: 20, height: 20,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Masuk',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+                          ),
                         ),
-                        child: auth.loading
-                            ? const SizedBox(width: 20, height: 20,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('Masuk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ],
@@ -170,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ]),
                     const SizedBox(height: 8),
                     _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
-                    _hintRow('Jaringan', '[IP laptop]  ·  SUSEMON2026'),
+                    _hintRow('Jaringan', '10.20.10.254  ·  SUSEMON2026'),
                   ],
                 ),
               ),

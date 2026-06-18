@@ -123,8 +123,19 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
                ewma_deviation, if_anomaly, rapid_increase]
     signal_count = sum(1 for s in signals if s)
 
-    # ── Confidence ──
-    confidence = min(98, 50 + signal_count * 8)
+    # ── Confidence — berbasis kualitas sinyal, bukan hanya jumlah ──
+    # Bobot: threshold (tinggi), z-score (sedang), IF (sedang), trend (rendah)
+    weights = {
+        "threshold": 30 if threshold_anomaly else (15 if threshold_warning else 0),
+        "z_temp":    20 if z_anomaly_temp else 0,
+        "z_hum":     10 if z_anomaly_hum else 0,
+        "ewma":      15 if ewma_deviation else 0,
+        "if":        20 if if_anomaly else (int(if_score * 10) if if_score > 0.4 else 0),
+        "trend":     10 if rapid_increase else 0,
+    }
+    raw_confidence = sum(weights.values())
+    # Baseline 50 jika tidak ada sinyal, max 98
+    confidence = max(50, min(98, 50 + raw_confidence)) if signal_count > 0 else 50
 
     anomaly_detected = signal_count >= 2 or threshold_anomaly
     overheating_risk = latest >= temp_danger or (rapid_increase and latest >= temp_warning)

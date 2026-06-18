@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
+import '../../../shared/widgets/interactive.dart';
 
 class AnalisisPage extends StatefulWidget {
   const AnalisisPage({super.key});
@@ -47,7 +49,10 @@ class _AnalisisPageState extends State<AnalisisPage> {
             _buildHeader(),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () => ai.fetchAnalysis(),
+                onRefresh: () async {
+                  HapticFeedback.mediumImpact();
+                  await ai.fetchAnalysis();
+                },
                 color: AppColors.primary,
                 backgroundColor: AppColors.bgCard,
                 child: SingleChildScrollView(
@@ -60,7 +65,13 @@ class _AnalisisPageState extends State<AnalisisPage> {
                       else
                         ...ai.analysis.map((a) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: _AiCard(analysis: a),
+                          child: FadeSlideIn(
+                            delay: Duration(milliseconds: 50 * ai.analysis.indexOf(a)),
+                            child: TapScale(
+                              onTap: () => HapticFeedback.selectionClick(),
+                              child: _AiCard(analysis: a),
+                            ),
+                          ),
                         )),
                       const SizedBox(height: 4),
                       if (ai.predictions.isNotEmpty)

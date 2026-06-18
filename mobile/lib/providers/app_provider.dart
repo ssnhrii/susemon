@@ -11,33 +11,39 @@ import '../services/websocket_service.dart';
 class AuthProvider extends ChangeNotifier {
   final ApiService _api;
   final _storage = const FlutterSecureStorage();
+
   bool _loggedIn = false;
   String? _userName;
+  String _role = 'pic';
   bool _loading = false;
   String? _error;
 
   AuthProvider(this._api);
 
-  bool get loggedIn => _loggedIn;
+  bool get loggedIn   => _loggedIn;
   String? get userName => _userName;
-  bool get loading => _loading;
-  String? get error => _error;
+  String get role      => _role;
+  bool get isAdmin     => _role == 'admin';
+  bool get isPic       => _role == 'pic';
+  bool get isStaff     => _role == 'admin' || _role == 'pic';
+  bool get loading     => _loading;
+  String? get error    => _error;
 
   Future<bool> login(String ipAddress, String accessCode) async {
     _loading = true;
     _error = null;
     notifyListeners();
     try {
-      // Set IP ke ApiConfig sebelum request — ini yang fix masalah IP berubah
       ApiConfig.setHost(ipAddress);
-
       final data = await _api.login(ipAddress, accessCode);
-      _userName = data['user']?['name'] ?? ipAddress;
+      final user = data['user'] as Map<String, dynamic>? ?? {};
+      _userName = user['name'] ?? ipAddress;
+      _role     = user['role'] ?? 'pic';
       _loggedIn = true;
-
-      // Simpan token + IP ke secure storage
-      await _storage.write(key: 'token', value: _api.token ?? '');
+      await _storage.write(key: 'token',     value: _api.token ?? '');
       await _storage.write(key: 'server_ip', value: ipAddress);
+      await _storage.write(key: 'user_role', value: _role);
+      await _storage.write(key: 'user_name', value: _userName ?? '');
       return true;
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
@@ -51,24 +57,27 @@ class AuthProvider extends ChangeNotifier {
   Future<void> tryAutoLogin() async {
     final token = await _storage.read(key: 'token');
     final ip    = await _storage.read(key: 'server_ip');
+    final role  = await _storage.read(key: 'user_role');
+    final name  = await _storage.read(key: 'user_name');
 
     if (token != null && token.isNotEmpty) {
-      // Restore IP yang terakhir dipakai
-      if (ip != null && ip.isNotEmpty) {
-        ApiConfig.setHost(ip);
-      }
+      if (ip != null && ip.isNotEmpty) ApiConfig.setHost(ip);
       _api.setToken(token);
+      _role     = role ?? 'pic';
+      _userName = name;
       _loggedIn = true;
       notifyListeners();
     }
   }
 
   Future<void> logout() async {
-    _api.clearToken();
+    await _api.logout();
     _loggedIn = false;
     _userName = null;
+    _role     = 'pic';
     await _storage.delete(key: 'token');
-    // Tidak hapus server_ip supaya field login terisi otomatis
+    await _storage.delete(key: 'user_role');
+    await _storage.delete(key: 'user_name');
     notifyListeners();
   }
 }
@@ -89,33 +98,31 @@ class SensorProvider extends ChangeNotifier {
 
   SensorProvider(this._api, this._ws);
 
-  List<SensorReading> get latest => _latest;
-  SensorStats get stats => _stats;
-  bool get loading => _loading;
-  bool get wsConnected => _wsConnected;
-  String? get error => _error;
+  List<SensorReading> get latest      => _latest;
+  SensorStats get stats               => _stats;
+  bool get loading                    => _loading;
+  bool get wsConnected                => _wsConnected;
+  String? get error                   => _error;
 
   String get globalStatus {
     if (_latest.any((r) => r.status == 'BERBAHAYA')) return 'BERBAHAYA';
-    if (_latest.any((r) => r.status == 'WASPADA')) return 'WASPADA';
-    if (_latest.isEmpty) return 'MEMUAT';
+    if (_latest.any((r) => r.status == 'WASPADA'))   return 'WASPADA';
+    if (_latest.isEmpty)                              return 'MEMUAT';
     return 'AMAN';
   }
 
   int get problemCount => _latest.where((r) => r.status != 'AMAN').length;
+  int get nodeCount    => _latest.length;
 
   void start() {
     _fetchLatest();
     _fetchStats();
     _ws.connect();
 
-    // Handle bulk update (semua node sekaligus dari background task)
     _wsSub = _ws.stream.listen((readings) {
       if (readings.length > 1) {
-        // Bulk update — replace semua
         _latest = readings;
       } else if (readings.length == 1) {
-        // Single node update dari MQTT — update hanya node tersebut
         final updated = readings.first;
         final idx = _latest.indexWhere((r) => r.nodeId == updated.nodeId);
         if (idx >= 0) {
@@ -124,23 +131,26 @@ class SensorProvider extends ChangeNotifier {
           _latest.add(updated);
         }
       }
-      _wsConnected = true;
+      _wsConnected = _ws.isConnected;
       _error = null;
       notifyListeners();
     });
 
-    // Fallback polling setiap 5s jika WS tidak tersedia
+    // Fallback polling setiap 5 detik jika WS tidak tersedia
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!_wsConnected) _fetchLatest();
     });
+
+    // Refresh stats setiap 30 detik
+    Timer.periodic(const Duration(seconds: 30), (_) => _fetchStats());
   }
 
   Future<void> _fetchLatest() async {
     try {
       _latest = await _api.getLatest();
-      _error = null;
+      _error  = null;
     } catch (e) {
-      _error = 'Gagal terhubung ke server';
+      _error = e.toString().replaceFirst('Exception: ', '');
     }
     notifyListeners();
   }
@@ -160,8 +170,20 @@ class SensorProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<SensorReading>> getHistory(String nodeId, {String period = '24h'}) async {
-    return _api.getSensorHistory(nodeId, period: period, limit: 50);
+  Future<List<SensorReading>> getHistory(
+    String nodeId, {
+    String period = '24h',
+    int limit = 100,
+  }) async {
+    return _api.getSensorHistory(nodeId, period: period, limit: limit);
+  }
+
+  Future<SensorStats> getNodeStats(String nodeId, {String period = '24h'}) async {
+    return _api.getStatistics(period: period, nodeId: nodeId);
+  }
+
+  String getExportUrl(String nodeId, {String period = '24h'}) {
+    return _api.getExportUrl(nodeId, period: period);
   }
 
   void stop() {
@@ -190,19 +212,18 @@ class NotificationProvider extends ChangeNotifier {
   NotificationProvider(this._api);
 
   List<AppNotification> get notifications => _notifications;
-  int get unreadCount => _unreadCount;
-  bool get loading => _loading;
+  int get unreadCount                      => _unreadCount;
+  bool get loading                         => _loading;
 
   void start() {
     fetch();
-    // Poll setiap 10 detik
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => fetch());
+    _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) => fetch());
   }
 
   Future<void> fetch() async {
     try {
-      _notifications = await _api.getNotifications();
-      _unreadCount = _notifications.where((n) => !n.isRead).length;
+      _notifications = await _api.getNotifications(limit: 50);
+      _unreadCount   = _notifications.where((n) => !n.isRead).length;
     } catch (_) {}
     notifyListeners();
   }
@@ -212,20 +233,19 @@ class NotificationProvider extends ChangeNotifier {
       await _api.markAsRead(id);
       final idx = _notifications.indexWhere((n) => n.id == id);
       if (idx != -1) {
-        _notifications[idx] = AppNotification(
-          id: _notifications[idx].id,
-          nodeId: _notifications[idx].nodeId,
-          title: _notifications[idx].title,
-          message: _notifications[idx].message,
-          type: _notifications[idx].type,
-          isRead: true,
-          createdAt: _notifications[idx].createdAt,
-          nodeName: _notifications[idx].nodeName,
-          location: _notifications[idx].location,
-        );
+        _notifications[idx] = _notifications[idx].copyWith(isRead: true);
         _unreadCount = _notifications.where((n) => !n.isRead).length;
         notifyListeners();
       }
+    } catch (_) {}
+  }
+
+  Future<void> markAllRead() async {
+    try {
+      await _api.markAllAsRead();
+      _notifications = _notifications.map((n) => n.copyWith(isRead: true)).toList();
+      _unreadCount = 0;
+      notifyListeners();
     } catch (_) {}
   }
 
@@ -243,14 +263,16 @@ class AiProvider extends ChangeNotifier {
 
   List<AiAnalysis> _analysis = [];
   Map<String, AiPrediction> _predictions = {};
+  Map<String, dynamic>? _summary;
   bool _loading = false;
   Timer? _pollTimer;
 
   AiProvider(this._api);
 
-  List<AiAnalysis> get analysis => _analysis;
-  Map<String, AiPrediction> get predictions => _predictions;
-  bool get loading => _loading;
+  List<AiAnalysis> get analysis              => _analysis;
+  Map<String, AiPrediction> get predictions  => _predictions;
+  Map<String, dynamic>? get summary          => _summary;
+  bool get loading                           => _loading;
 
   void start() {
     fetchAnalysis();
@@ -258,9 +280,13 @@ class AiProvider extends ChangeNotifier {
   }
 
   Future<void> fetchAnalysis() async {
+    _loading = true;
+    notifyListeners();
     try {
       _analysis = await _api.getAiAnalysis();
+      _summary  = await _api.getAiSummary();
     } catch (_) {}
+    _loading = false;
     notifyListeners();
   }
 

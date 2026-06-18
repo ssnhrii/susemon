@@ -34,13 +34,12 @@
 #include <time.h>
 
 // ── Konfigurasi MQTT — lokal via WiFiManager ─────────────────────────────────
-// IP server diisi via portal WiFiManager (192.168.4.1) saat pertama kali setup
+// IP server, user, dan password diisi via portal WiFiManager (192.168.4.1)
+// TIDAK hardcoded di sini — disimpan di flash via Preferences
 #define MQTT_PORT      1883
 #define MQTT_TOPIC     "sensor/data"
 #define MQTT_TOPIC_AI  "sensor/ai_result"
 #define MQTT_CLIENT_ID "susemon-gateway"
-#define MQTT_USER      "susemon"
-#define MQTT_PASS      "Susemon2026mqtt"
 
 // ── Nama hotspot saat konfigurasi ─────────────────────────────────────────────
 #define AP_NAME     "SUSEMON-Gateway"
@@ -48,7 +47,9 @@
 
 // ── Penyimpanan konfigurasi di flash ──────────────────────────────────────────
 Preferences prefs;
-char mqttServer[40] = "";  // IP diisi via portal WiFiManager (192.168.4.1)
+char mqttServer[40] = "";   // IP diisi via portal WiFiManager (192.168.4.1)
+char mqttUser[32]   = "";   // Username MQTT — diisi via portal
+char mqttPass[64]   = "";   // Password MQTT — diisi via portal
 
 // ── Pin LoRa — LILYGO LORA32 T22_V1.1 (SX1276) ──────────────────────────────
 // T22_V1.1: SCK=5, MISO=19, MOSI=27, SS=18, RST=14, DIO0=26
@@ -110,15 +111,19 @@ void setup() {
 
   // Load konfigurasi MQTT dari flash
   prefs.begin("susemon", false);
-  String savedMqtt = prefs.getString("mqtt_server", mqttServer);
+  String savedMqtt = prefs.getString("mqtt_server", "");
   savedMqtt.toCharArray(mqttServer, sizeof(mqttServer));
+  String savedUser = prefs.getString("mqtt_user", "");
+  savedUser.toCharArray(mqttUser, sizeof(mqttUser));
+  String savedPass = prefs.getString("mqtt_pass", "");
+  savedPass.toCharArray(mqttPass, sizeof(mqttPass));
   Serial.printf("[Config] MQTT Server: %s\n", mqttServer);
 
   // WiFiManager — auto-connect atau buka portal konfigurasi
   connectWiFi();
 
-  // Sync waktu NTP (UTC+7 WIB)
-  configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  // Sync waktu NTP — UTC (offset 0), konversi ke WIB dilakukan di getISOTimestamp()
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   showStatus("NTP sync...");
   delay(2000);
 
@@ -273,8 +278,10 @@ void handleLoRaPacket(int packetSize) {
   lastTemp   = doc["temperature"].as<float>();
   lastHum    = doc["humidity"].as<float>();
 
-  // Tambahkan timestamp
-  doc["timestamp"] = getISOTimestamp();
+  // Tambahkan timestamp UTC dan RSSI ke payload
+  String ts = getISOTimestamp();
+  if (ts.length() > 0) doc["timestamp"] = ts;
+  doc["rssi"] = lastRssi;
 
   // Kirim ke MQTT
   String payload;
@@ -386,15 +393,23 @@ void connectWiFi() {
 
   WiFiManager wm;
 
-  // Parameter tambahan: IP MQTT Server
-  WiFiManagerParameter mqttParam("mqtt", "IP Backend Server", mqttServer, 40);
+  // Parameter tambahan: IP MQTT Server, Username, Password
+  WiFiManagerParameter mqttParam("mqtt",      "IP Backend Server",  mqttServer, 40);
+  WiFiManagerParameter userParam("mqtt_user", "MQTT Username",      mqttUser,   32);
+  WiFiManagerParameter passParam("mqtt_pass", "MQTT Password",      mqttPass,   64);
   wm.addParameter(&mqttParam);
+  wm.addParameter(&userParam);
+  wm.addParameter(&passParam);
 
-  // Callback saat konfigurasi selesai — simpan IP MQTT ke flash
+  // Callback saat konfigurasi selesai — simpan semua ke flash
   wm.setSaveParamsCallback([&]() {
     strncpy(mqttServer, mqttParam.getValue(), sizeof(mqttServer));
+    strncpy(mqttUser,   userParam.getValue(), sizeof(mqttUser));
+    strncpy(mqttPass,   passParam.getValue(), sizeof(mqttPass));
     prefs.putString("mqtt_server", mqttServer);
-    Serial.printf("[Config] MQTT Server disimpan: %s\n", mqttServer);
+    prefs.putString("mqtt_user",   mqttUser);
+    prefs.putString("mqtt_pass",   mqttPass);
+    Serial.printf("[Config] MQTT disimpan: %s user=%s\n", mqttServer, mqttUser);
   });
 
   // Tampilkan info di OLED
@@ -434,10 +449,14 @@ void connectWiFi() {
   wifiOk = true;
   Serial.printf("[WiFi] Terhubung! IP: %s\n", WiFi.localIP().toString().c_str());
 
-  // Update MQTT server dari parameter yang baru disimpan
+  // Update MQTT config dari parameter yang baru disimpan
   strncpy(mqttServer, mqttParam.getValue(), sizeof(mqttServer));
+  strncpy(mqttUser,   userParam.getValue(), sizeof(mqttUser));
+  strncpy(mqttPass,   passParam.getValue(), sizeof(mqttPass));
   if (strlen(mqttServer) > 0) {
     prefs.putString("mqtt_server", mqttServer);
+    prefs.putString("mqtt_user",   mqttUser);
+    prefs.putString("mqtt_pass",   mqttPass);
   }
 }
 
@@ -455,7 +474,9 @@ void connectMQTT() {
   while (!mqttClient.connected() && retry < 5) {
     Serial.printf("[MQTT] Menghubungkan ke %s:%d...\n", mqttServer, MQTT_PORT);
 
-    bool ok = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS);
+    bool ok = mqttClient.connect(MQTT_CLIENT_ID,
+                                strlen(mqttUser) > 0 ? mqttUser : nullptr,
+                                strlen(mqttPass) > 0 ? mqttPass : nullptr);
 
     if (ok) {
       mqttOk = true;
@@ -550,7 +571,7 @@ void showSplash() {
   display.setCursor(10, 43);
   display.print("LORA32 T22_V1.1");
   display.setCursor(22, 53);
-  display.print("PBL-TRPL412 v2.0");
+  display.print("PBL-TRPL412 v2.1");
   display.display();
   delay(2500);
 }
@@ -586,14 +607,15 @@ void showError(String msg) {
   display.display();
 }
 
-// ── Timestamp ISO8601 WIB ─────────────────────────────────────────────────────
+// ── Timestamp ISO8601 UTC ─────────────────────────────────────────────────────
+// NTP sync ke UTC (offset 0), timestamp dikirim dalam format UTC ISO8601
 
 String getISOTimestamp() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    return "2026-01-01T00:00:00+07:00";
+    return "";  // kosong → backend akan isi dengan server time UTC
   }
-  char buf[30];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+07:00", &timeinfo);
+  char buf[25];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
   return String(buf);
 }

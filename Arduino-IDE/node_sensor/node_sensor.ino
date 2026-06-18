@@ -1,5 +1,5 @@
 ﻿/**
- * SUSEMON - Node Sensor v2.0
+ * SUSEMON - Node Sensor v2.1
  * Hardware : LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276 + OLED built-in)
  * Sensor   : DHT22
  * Kirim data MENTAH, terima status AI via downlink
@@ -73,6 +73,7 @@ bool   loraReady   = false;
 String aiStatus  = "MENUNGGU";
 String aiRisk    = "-";
 int    aiConf    = 0;
+int    lastRssi  = 0;   // RSSI downlink terakhir dari gateway
 unsigned long lastDownlink = 0;
 unsigned long lastSend     = 0;
 
@@ -193,9 +194,10 @@ void sendRawData() {
 void receiveDownlink() {
   String raw = "";
   while (LoRa.available()) raw += (char)LoRa.read();
-  Serial.printf("[RX] Downlink: %s\n", raw.c_str());
+  lastRssi = LoRa.packetRssi();
+  Serial.printf("[RX] Downlink RSSI=%d: %s\n", lastRssi, raw.c_str());
 
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<192> doc;
   if (deserializeJson(doc, raw) != DeserializationError::Ok) {
     Serial.println("[RX] JSON error");
     return;
@@ -282,12 +284,17 @@ void updateDisplay() {
   display.print(String((int)humidity));
   display.print(" %");
 
-  // ══ BARIS 3: LoRa TX ══
+  // ══ BARIS 3: LoRa TX & RSSI ══
   display.setCursor(0, 34);
   display.print("LoRa  : TX=");
   display.print(txCount);
-  display.print("  Fail=");
-  display.print(failCount);
+  if (lastRssi != 0) {
+    display.print(" RSSI=");
+    display.print(lastRssi);
+  } else {
+    display.print("  Fail=");
+    display.print(failCount);
+  }
 
   // ══ Divider ══
   display.drawLine(0, 43, 127, 43, SSD1306_WHITE);
@@ -336,7 +343,7 @@ void showSplash() {
   display.setCursor(14, 43);
   display.print("DHT22 | LoRa 923MHz");
   display.setCursor(22, 53);
-  display.print("PBL-TRPL412 v2.0");
+  display.print("PBL-TRPL412 v2.1");
   display.display();
   delay(2500);
 }

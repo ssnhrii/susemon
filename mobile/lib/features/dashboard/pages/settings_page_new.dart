@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
+import '../../../shared/widgets/interactive.dart';
 import '../../auth/login_screen.dart';
+import 'users_page.dart';
+import 'nodes_page.dart';
 
 class SettingsPageNew extends StatefulWidget {
   const SettingsPageNew({super.key});
@@ -22,14 +26,17 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Keluar', style: TextStyle(color: Colors.white)),
-        content: Text('Yakin ingin keluar dari sistem?',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: const Text('Keluar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        content: Text('Yakin ingin keluar dari sistem?', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
-              child: Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
-          TextButton(onPressed: () => Navigator.pop(context, true),
-              child: const Text('Keluar', style: TextStyle(color: AppColors.danger))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Keluar', style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
         ],
       ),
     );
@@ -61,45 +68,71 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // Connection status
-                    _buildConnectionCard(wsConnected),
+                    _buildConnectionCard(wsConnected, sensor.nodeCount),
                     const SizedBox(height: 14),
                     _buildSection('Threshold Suhu', Icons.thermostat, [_buildThreshold()]),
                     const SizedBox(height: 14),
                     _buildSection('Notifikasi', Icons.notifications_rounded, [
                       _buildSwitch('Notifikasi Push', 'Peringatan di perangkat', _pushNotif,
                           (v) => setState(() => _pushNotif = v)),
-                      const SizedBox(height: 12),
+                      const Divider(color: AppColors.cardBorder, height: 24),
                       _buildSwitch('Suara Peringatan', 'Bunyi saat kondisi kritis', _soundAlert,
                           (v) => setState(() => _soundAlert = v)),
                     ]),
                     const SizedBox(height: 14),
                     _buildSection('Sistem', Icons.tune, [_buildIntervalRow()]),
                     const SizedBox(height: 14),
+                    if (auth.isStaff) ...[
+                      _buildSection('Administrasi', Icons.manage_accounts, [
+                        _buildNavRow(
+                          icon: Icons.sensors_rounded,
+                          title: 'Manajemen Perangkat',
+                          subtitle: 'Kelola node sensor IoT',
+                          onTap: () => Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const NodesPage())),
+                        ),
+                        if (auth.isAdmin) ...[
+                          const Divider(color: AppColors.cardBorder, height: 24),
+                          _buildNavRow(
+                            icon: Icons.people_rounded,
+                            title: 'Manajemen User',
+                            subtitle: 'Kelola akses pengguna sistem',
+                            onTap: () => Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const UsersPage())),
+                          ),
+                        ],
+                      ]),
+                      const SizedBox(height: 14),
+                    ],
                     _buildSection('Tentang', Icons.info_outline, [
-                      _infoRow('Versi', '2.0.0'),
+                      _infoRow('Versi', '2.1.0'),
                       _infoRow('ID Proyek', 'PBL-TRPL412'),
                       _infoRow('Institusi', 'Politeknik Negeri Batam'),
                       _infoRow('Teknologi', 'Flutter + LoRa + AI'),
                       _infoRow('Backend', 'Python FastAPI + WebSocket'),
                     ]),
-                    const SizedBox(height: 20),
-                    // Logout button
+                    const SizedBox(height: 24),
                     SizedBox(
-                      width: double.infinity, height: 50,
-                      child: OutlinedButton.icon(
-                        onPressed: _logout,
-                        icon: const Icon(Icons.logout, size: 18),
-                        label: const Text('Keluar dari Sistem',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          side: const BorderSide(color: AppColors.danger),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      width: double.infinity,
+                      height: 52,
+                      child: TapScale(
+                        scale: 0.97,
+                        onTap: _logout,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.danger),
+                          ),
+                          child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.logout, size: 18, color: AppColors.danger),
+                            SizedBox(width: 8),
+                            Text('Keluar dari Sistem',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.danger)),
+                          ]),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -112,70 +145,128 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
 
   Widget _buildHeader(AuthProvider auth) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    color: AppColors.bgCard,
-    child: Row(
-      children: [
-        const Icon(Icons.settings_rounded, color: AppColors.primary, size: 22),
-        const SizedBox(width: 10),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Pengaturan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-          Text(auth.userName ?? 'Admin', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-        ]),
-      ],
-    ),
-  );
-
-  Widget _buildConnectionCard(bool wsConnected) => Container(
-    padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: AppColors.bgCard, borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: wsConnected ? AppColors.success.withOpacity(0.3) : AppColors.warning.withOpacity(0.3)),
+      color: AppColors.bgCard,
+      border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
     ),
     child: Row(children: [
       Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: (wsConnected ? AppColors.success : AppColors.warning).withOpacity(0.15),
-          borderRadius: BorderRadius.circular(10),
+          color: AppColors.primary.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(wsConnected ? Icons.wifi : Icons.wifi_off,
-            color: wsConnected ? AppColors.success : AppColors.warning, size: 20),
+        child: const Icon(Icons.settings_rounded, color: AppColors.primary, size: 20),
       ),
       const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(wsConnected ? 'WebSocket Terhubung' : 'HTTP Polling Aktif',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
-        Text(wsConnected ? 'Real-time data streaming aktif' : 'Fallback polling setiap 5 detik',
-            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-      ])),
-      Container(
-        width: 10, height: 10,
-        decoration: BoxDecoration(
-          color: wsConnected ? AppColors.success : AppColors.warning,
-          shape: BoxShape.circle,
-          boxShadow: [BoxShadow(
-            color: wsConnected ? AppColors.success : AppColors.warning,
-            blurRadius: 6, spreadRadius: 1,
-          )],
-        ),
-      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Pengaturan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+        Row(children: [
+          Text(auth.userName ?? 'Admin', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: auth.isAdmin ? AppColors.warning.withOpacity(0.15) : AppColors.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              auth.role.toUpperCase(),
+              style: TextStyle(
+                fontSize: 9, fontWeight: FontWeight.w700,
+                color: auth.isAdmin ? AppColors.warning : AppColors.primary,
+              ),
+            ),
+          ),
+        ]),
+      ]),
     ]),
   );
+
+  Widget _buildConnectionCard(bool wsConnected, int nodeCount) {
+    final color = wsConnected ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(wsConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded, color: color, size: 22),
+        ),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            wsConnected ? 'WebSocket Terhubung' : 'HTTP Polling Aktif',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            wsConnected ? '$nodeCount node terpantau real-time' : 'Fallback polling setiap 5 detik',
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ])),
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(
+            color: color, shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: color, blurRadius: 8, spreadRadius: 2)],
+          ),
+        ),
+      ]),
+    );
+  }
 
   Widget _buildSection(String title, IconData icon, List<Widget> children) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: AppColors.bgCard, borderRadius: BorderRadius.circular(14),
+      color: AppColors.bgCard,
+      borderRadius: BorderRadius.circular(14),
       border: Border.all(color: AppColors.cardBorder),
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Icon(icon, size: 16, color: AppColors.primary),
-        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 14, color: AppColors.primary),
+        ),
+        const SizedBox(width: 10),
         Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
       ]),
       const SizedBox(height: 16),
       ...children,
+    ]),
+  );
+
+  Widget _buildNavRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) => TapScale(
+    onTap: () {
+      HapticFeedback.selectionClick();
+      onTap();
+    },
+    child: Row(children: [
+      Icon(icon, size: 18, color: AppColors.primary),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+        Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ])),
+      const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 20),
     ]),
   );
 
@@ -185,31 +276,41 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('Batas Suhu Kritis', style: TextStyle(fontSize: 13, color: Colors.white)),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          decoration: BoxDecoration(color: AppColors.danger.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.danger.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Text('${_threshold.toStringAsFixed(0)}°C',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.danger)),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.danger)),
         ),
       ]),
+      const SizedBox(height: 8),
       SliderTheme(
         data: SliderThemeData(
           activeTrackColor: AppColors.primary,
           inactiveTrackColor: AppColors.bgCardAlt,
           thumbColor: AppColors.primary,
-          overlayColor: AppColors.primary.withOpacity(0.2),
+          overlayColor: AppColors.primary.withOpacity(0.15),
+          trackHeight: 3,
         ),
-        child: Slider(value: _threshold, min: 30, max: 50, divisions: 20,
-            onChanged: (v) => setState(() => _threshold = v)),
+        child: Slider(
+          value: _threshold, min: 30, max: 50, divisions: 20,
+          onChanged: (v) => setState(() => _threshold = v),
+        ),
       ),
-      Text('Peringatan dikirim jika suhu ≥ ${_threshold.toStringAsFixed(0)}°C',
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      Text(
+        'Peringatan dikirim jika suhu ≥ ${_threshold.toStringAsFixed(0)}°C',
+        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+      ),
     ],
   );
 
   Widget _buildSwitch(String title, String sub, bool val, Function(bool) onChange) => Row(
     children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontSize: 13, color: Colors.white)),
+        Text(title, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 2),
         Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
       ])),
       Switch(value: val, onChanged: onChange, activeColor: AppColors.primary),
@@ -219,14 +320,16 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
   Widget _buildIntervalRow() => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Interval Refresh', style: TextStyle(fontSize: 13, color: Colors.white)),
+      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Interval Refresh', style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500)),
+        SizedBox(height: 2),
         Text('Fallback polling interval', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-      ]),
+      ])),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: AppColors.bgCardAlt, borderRadius: BorderRadius.circular(10),
+          color: AppColors.bgCardAlt,
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.cardBorder),
         ),
         child: DropdownButton<String>(
@@ -249,7 +352,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
     padding: const EdgeInsets.only(bottom: 10),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+      Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
     ]),
   );
 }

@@ -24,6 +24,9 @@ THRESHOLDS = {
     "hum_danger":   settings.AI_HUM_DANGER,
 }
 
+# Urutan severity status — dipakai untuk perbandingan hysteresis
+_STATUS_LEVEL = {"AMAN": 0, "WASPADA": 1, "BERBAHAYA": 2}
+
 _loop: asyncio.AbstractEventLoop = None
 _ws_manager = None
 _mqtt_client = None
@@ -58,12 +61,32 @@ def _on_disconnect(client, userdata, rc, properties=None):
         logger.warning(f"MQTT disconnected ({rc}), auto-reconnect aktif...")
 
 
+def _normalize_timestamp(ts_str: str) -> str:
+    """Normalisasi timestamp ke UTC ISO8601. Gateway baru kirim UTC (Z), gateway lama kirim +07:00."""
+    from datetime import timedelta
+    if not ts_str:
+        return datetime.now(timezone.utc).isoformat()
+    try:
+        if ts_str.endswith("+07:00"):
+            # Gateway lama — konversi WIB ke UTC
+            dt = datetime.fromisoformat(ts_str)
+            return (dt.replace(tzinfo=None) - timedelta(hours=7)).replace(tzinfo=timezone.utc).isoformat()
+        if ts_str.endswith("Z"):
+            return ts_str[:-1] + "+00:00"
+        # Tidak ada timezone info → anggap UTC
+        if "+" not in ts_str[-6:] and ts_str[-3] != ":":
+            return ts_str + "+00:00"
+        return ts_str
+    except Exception:
+        return datetime.now(timezone.utc).isoformat()
+
+
 def _on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
         logger.info(f"MQTT IN: {raw}")
-        if not raw.get("timestamp"):
-            raw["timestamp"] = datetime.now(timezone.utc).isoformat()
+        # Normalisasi timestamp ke UTC — konsisten di semua layer
+        raw["timestamp"] = _normalize_timestamp(raw.get("timestamp", ""))
         if _loop and _loop.is_running():
             asyncio.run_coroutine_threadsafe(_process(raw), _loop)
     except Exception as e:
@@ -155,11 +178,14 @@ async def _process(data: dict):
         prev = _last_status.get(node_id, "AMAN")
         counter = _signal_counter.get(node_id, 0)
 
+        prev_level = _STATUS_LEVEL.get(prev, 0)
+        raw_level  = _STATUS_LEVEL.get(raw_status, 0)
+
         if raw_status == prev:
             # Status sama → reset counter
             _signal_counter[node_id] = 0
             final_status = raw_status
-        elif raw_status > prev or (raw_status == "BERBAHAYA"):
+        elif raw_level > prev_level:
             # Naik status (AMAN→WASPADA atau WASPADA→BERBAHAYA)
             counter += 1
             _signal_counter[node_id] = counter
@@ -219,7 +245,7 @@ async def _process(data: dict):
             "temperature": temperature,
             "humidity":    humidity,
             "status":      final_status,
-            "timestamp":   datetime.now().isoformat(),
+            "timestamp":   datetime.now(timezone.utc).isoformat(),  # selalu UTC
         }
         if ai_result:
             ws_payload["ai"] = {

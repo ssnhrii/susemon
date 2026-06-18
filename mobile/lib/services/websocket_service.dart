@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'api_config.dart';
 import '../models/sensor_model.dart';
@@ -10,7 +11,9 @@ class WebSocketService {
   StreamController<Map<String, dynamic>>? _aiController;
   Timer? _reconnectTimer;
   bool _disposed = false;
-  int _retrySeconds = 5;  // exponential backoff
+  int _retrySeconds = 5;
+  bool _connected = false;
+  final _rng = Random();
 
   Stream<List<SensorReading>> get stream {
     _controller ??= StreamController<List<SensorReading>>.broadcast();
@@ -21,6 +24,8 @@ class WebSocketService {
     _aiController ??= StreamController<Map<String, dynamic>>.broadcast();
     return _aiController!.stream;
   }
+
+  bool get isConnected => _connected;
 
   void connect() {
     _disposed = false;
@@ -34,12 +39,21 @@ class WebSocketService {
       _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
       _channel!.stream.listen(
         _onMessage,
-        onError: (_) => _scheduleReconnect(),
-        onDone: () => _scheduleReconnect(),
+        onError: (_) {
+          _connected = false;
+          _scheduleReconnect();
+        },
+        onDone: () {
+          _connected = false;
+          _scheduleReconnect();
+        },
         cancelOnError: false,
       );
-      _retrySeconds = 5; // reset on success
+      // Anggap connected setelah stream terbuka — akan di-reset jika error
+      _connected = true;
+      _retrySeconds = 5; // reset backoff on success
     } catch (_) {
+      _connected = false;
       _scheduleReconnect();
     }
   }
@@ -48,6 +62,13 @@ class WebSocketService {
     try {
       final msg = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final type = msg['type'] as String? ?? '';
+
+      // Konfirmasi koneksi dari server
+      if (type == 'connection') {
+        _connected = true;
+        _retrySeconds = 5;
+        return;
+      }
 
       // Broadcast semua node (background task 3 detik)
       if (type == 'sensor_update' && msg.containsKey('data')) {
@@ -66,7 +87,7 @@ class WebSocketService {
           temperature: (msg['temperature'] as num?)?.toDouble() ?? 0,
           humidity: (msg['humidity'] as num?)?.toDouble() ?? 0,
           status: msg['status'] ?? 'AMAN',
-          timestamp: DateTime.tryParse(msg['timestamp'] ?? '') ?? DateTime.now(),
+          timestamp: DateTime.tryParse(msg['timestamp'] ?? '')?.toUtc() ?? DateTime.now().toUtc(),
         );
         _controller?.add([r]);
         return;
@@ -82,13 +103,17 @@ class WebSocketService {
   void _scheduleReconnect() {
     if (_disposed) return;
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(Duration(seconds: _retrySeconds), _tryConnect);
-    // Exponential backoff: 5s → 10s → 20s → 40s → max 60s, lalu tetap 60s (tidak berhenti)
+    // Jitter ±20% untuk hindari thundering herd saat banyak client reconnect bersamaan
+    final jitter = (_rng.nextDouble() * 0.4 - 0.2) * _retrySeconds;
+    final delay = (_retrySeconds + jitter).clamp(5.0, 65.0);
+    _reconnectTimer = Timer(Duration(milliseconds: (delay * 1000).toInt()), _tryConnect);
+    // Exponential backoff: 5s → 10s → 20s → 40s → max 60s
     _retrySeconds = (_retrySeconds * 2).clamp(5, 60);
   }
 
   void disconnect() {
     _disposed = true;
+    _connected = false;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     _controller?.close();
