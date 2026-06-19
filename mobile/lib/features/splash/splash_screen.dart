@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../core/constants/app_colors.dart';
@@ -65,7 +65,7 @@ class _SplashScreenState extends State<SplashScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle, color: AppColors.bgCard,
                       border: Border.all(color: AppColors.primary, width: 2),
-                      boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.35), blurRadius: 40, spreadRadius: 8)],
+                      boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: 8)],
                     ),
                     child: const Icon(Icons.sensors, size: 52, color: AppColors.primary),
                   ),

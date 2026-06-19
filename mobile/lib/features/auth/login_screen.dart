@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -70,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   shape: BoxShape.circle,
                   color: AppColors.bgCard,
                   border: Border.all(color: AppColors.primary, width: 2),
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 30, spreadRadius: 6)],
+                  boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.3), blurRadius: 30, spreadRadius: 6)],
                 ),
                 child: const Icon(Icons.sensors, size: 42, color: AppColors.primary),
               ),
@@ -119,9 +119,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppColors.danger.withOpacity(0.1),
+                          color: AppColors.danger.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.danger.withOpacity(0.3)),
+                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
                         ),
                         child: Row(children: [
                           const Icon(Icons.error_outline, color: AppColors.danger, size: 16),
@@ -145,7 +145,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
                             color: auth.loading
-                                ? AppColors.primary.withOpacity(0.5)
+                                ? AppColors.primary.withValues(alpha: 0.5)
                                 : AppColors.primary,
                             borderRadius: BorderRadius.circular(12),
                           ),

@@ -206,7 +206,7 @@ class NotificationProvider extends ChangeNotifier {
 
   List<AppNotification> _notifications = [];
   int _unreadCount = 0;
-  bool _loading = false;
+  final bool _loading = false;
   Timer? _pollTimer;
 
   NotificationProvider(this._api);
@@ -262,7 +262,7 @@ class AiProvider extends ChangeNotifier {
   final ApiService _api;
 
   List<AiAnalysis> _analysis = [];
-  Map<String, AiPrediction> _predictions = {};
+  final Map<String, AiPrediction> _predictions = {};
   Map<String, dynamic>? _summary;
   bool _loading = false;
   Timer? _pollTimer;

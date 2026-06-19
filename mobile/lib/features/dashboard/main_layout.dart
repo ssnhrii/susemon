@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
@@ -39,7 +39,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    for (final c in _tabControllers) c.dispose();
+    for (final c in _tabControllers) { c.dispose(); }
     super.dispose();
   }
 
@@ -76,7 +76,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
           color: AppColors.bgCard,
           border: Border(top: BorderSide(color: AppColors.cardBorder, width: 0.8)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, -4)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, -4)),
           ],
         ),
         child: SafeArea(
@@ -122,7 +122,7 @@ class _NavItem extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: selected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+              color: selected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
             child: ScaleTransition(
@@ -173,7 +173,7 @@ class _NavItemBadge extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: selected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+                color: selected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: ScaleTransition(

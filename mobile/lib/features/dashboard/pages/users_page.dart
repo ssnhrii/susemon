@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/user_model.dart';
@@ -37,6 +37,7 @@ class _UsersPageState extends State<UsersPage> {
     final ipCtrl   = TextEditingController();
     final nameCtrl = TextEditingController();
     final codeCtrl = TextEditingController();
+    final api      = context.read<ApiService>();
     String role = 'pic';
 
     await showDialog(
@@ -60,7 +61,7 @@ class _UsersPageState extends State<UsersPage> {
                 label: const Text('PIC'),
                 selected: role == 'pic',
                 onSelected: (_) => setS(() => role = 'pic'),
-                selectedColor: AppColors.primary.withOpacity(0.2),
+                selectedColor: AppColors.primary.withValues(alpha: 0.2),
                 labelStyle: TextStyle(color: role == 'pic' ? AppColors.primary : AppColors.textSecondary, fontSize: 12),
               ),
               const SizedBox(width: 8),
@@ -68,7 +69,7 @@ class _UsersPageState extends State<UsersPage> {
                 label: const Text('Admin'),
                 selected: role == 'admin',
                 onSelected: (_) => setS(() => role = 'admin'),
-                selectedColor: AppColors.warning.withOpacity(0.2),
+                selectedColor: AppColors.warning.withValues(alpha: 0.2),
                 labelStyle: TextStyle(color: role == 'admin' ? AppColors.warning : AppColors.textSecondary, fontSize: 12),
               ),
             ]),
@@ -78,15 +79,18 @@ class _UsersPageState extends State<UsersPage> {
                 child: Text('Batal', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () async {
+                final ipAddr   = ipCtrl.text.trim();
+                final userName = nameCtrl.text.trim();
+                final code     = codeCtrl.text.trim();
                 Navigator.pop(ctx);
                 try {
-                  await context.read<ApiService>().createUser({
-                    'ip_address': ipCtrl.text.trim(),
-                    'name': nameCtrl.text.trim(),
-                    'access_code': codeCtrl.text.trim(),
+                  await api.createUser({
+                    'ip_address': ipAddr,
+                    'name': userName,
+                    'access_code': code,
                     'role': role,
                   });
-                  _fetch();
+                  if (mounted) _fetch();
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -106,6 +110,7 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   Future<void> _deleteUser(AppUser user) async {
+    final api = context.read<ApiService>();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -122,8 +127,8 @@ class _UsersPageState extends State<UsersPage> {
     );
     if (confirm == true) {
       try {
-        await context.read<ApiService>().deleteUser(user.id);
-        _fetch();
+        await api.deleteUser(user.id);
+        if (mounted) _fetch();
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -228,7 +233,7 @@ class _UserCard extends StatelessWidget {
         Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
-            color: roleColor.withOpacity(0.15),
+            color: roleColor.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(user.isAdmin ? Icons.admin_panel_settings : Icons.person,
@@ -241,7 +246,7 @@ class _UserCard extends StatelessWidget {
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: roleColor.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(color: roleColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
               child: Text(user.role.toUpperCase(),
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: roleColor)),
             ),
@@ -249,7 +254,7 @@ class _UserCard extends StatelessWidget {
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: AppColors.danger.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
                 child: const Text('NONAKTIF', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.danger)),
               ),
             ],

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -103,9 +103,9 @@ class _TopBar extends StatelessWidget {
       Container(
         width: 38, height: 38,
         decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.12),
+          color: AppColors.primary.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
         ),
         child: const Icon(Icons.sensors_rounded, size: 20, color: AppColors.primary),
       ),
@@ -152,9 +152,9 @@ class _LiveBadgeState extends State<_LiveBadge> with SingleTickerProviderStateMi
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         AnimatedBuilder(
@@ -162,9 +162,9 @@ class _LiveBadgeState extends State<_LiveBadge> with SingleTickerProviderStateMi
           builder: (_, __) => Container(
             width: 7, height: 7,
             decoration: BoxDecoration(
-              color: color.withOpacity(_anim.value),
+              color: color.withValues(alpha: _anim.value),
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: color.withOpacity(0.5), blurRadius: 4, spreadRadius: 1)],
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 4, spreadRadius: 1)],
             ),
           ),
         ),
@@ -249,15 +249,15 @@ class _StatusBannerState extends State<_StatusBanner>
       duration: const Duration(milliseconds: 500),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: widget.sc.withOpacity(0.08),
+        color: widget.sc.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: widget.sc.withOpacity(0.35 * _pulse.value + 0.1),
+          color: widget.sc.withValues(alpha: 0.35 * _pulse.value + 0.1),
           width: 1.5,
         ),
         boxShadow: widget.status != 'AMAN' ? [
           BoxShadow(
-            color: widget.sc.withOpacity(0.1 * _pulse.value),
+            color: widget.sc.withValues(alpha: 0.1 * _pulse.value),
             blurRadius: 20, spreadRadius: 2,
           ),
         ] : null,
@@ -267,7 +267,7 @@ class _StatusBannerState extends State<_StatusBanner>
           duration: const Duration(milliseconds: 300),
           width: 48, height: 48,
           decoration: BoxDecoration(
-            color: widget.sc.withOpacity(0.15),
+            color: widget.sc.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(_icon, color: widget.sc, size: 26),
@@ -276,7 +276,7 @@ class _StatusBannerState extends State<_StatusBanner>
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('STATUS SISTEM',
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                  color: widget.sc.withOpacity(0.7), letterSpacing: 1)),
+                  color: widget.sc.withValues(alpha: 0.7), letterSpacing: 1)),
           const SizedBox(height: 2),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 400),
@@ -285,15 +285,15 @@ class _StatusBannerState extends State<_StatusBanner>
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: widget.sc)),
           ),
           const SizedBox(height: 2),
-          Text(_subtitle, style: TextStyle(fontSize: 11, color: widget.sc.withOpacity(0.8))),
+          Text(_subtitle, style: TextStyle(fontSize: 11, color: widget.sc.withValues(alpha: 0.8))),
         ])),
         Container(
           width: 12, height: 12,
           decoration: BoxDecoration(
-            color: widget.sc.withOpacity(_pulse.value),
+            color: widget.sc.withValues(alpha: _pulse.value),
             shape: BoxShape.circle,
             boxShadow: [BoxShadow(
-              color: widget.sc.withOpacity(0.6 * _pulse.value),
+              color: widget.sc.withValues(alpha: 0.6 * _pulse.value),
               blurRadius: 10, spreadRadius: 3,
             )],
           ),
@@ -348,7 +348,7 @@ class _StatCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(7),
             ),
             child: Icon(icon, size: 13, color: color),
@@ -384,7 +384,7 @@ class _SectionHeader extends StatelessWidget {
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.12),
+          color: AppColors.primary.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text('$count',
@@ -462,7 +462,7 @@ class _NodeCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.bgCard,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.35), width: 1.5),
+          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
         ),
         child: Stack(children: [
           Positioned(
@@ -471,7 +471,7 @@ class _NodeCard extends StatelessWidget {
               width: 80, height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withOpacity(0.06),
+                color: color.withValues(alpha: 0.06),
               ),
             ),
           ),
@@ -482,7 +482,7 @@ class _NodeCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(7),
                   ),
                   child: Text(reading.nodeId,
@@ -493,7 +493,7 @@ class _NodeCard extends StatelessWidget {
                   width: 8, height: 8,
                   decoration: BoxDecoration(
                     color: color, shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: color.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
+                    boxShadow: [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 6, spreadRadius: 1)],
                   ),
                 ),
               ]),
@@ -545,7 +545,7 @@ class _NodeCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8),
+                color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8),
               ),
               child: Text(r.nodeId, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
             ),

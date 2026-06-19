@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class AppTheme {
   // Dark gradient background
@@ -26,8 +26,8 @@ class AppTheme {
   
   // Text colors
   static final textPrimary = Colors.white;
-  static final textSecondary = Colors.white.withOpacity(0.7);
-  static final textTertiary = Colors.white.withOpacity(0.5);
+  static final textSecondary = Colors.white.withValues(alpha: 0.7);
+  static final textTertiary = Colors.white.withValues(alpha: 0.5);
   
   // Card decoration
   static BoxDecoration cardDecoration = BoxDecoration(
@@ -36,7 +36,7 @@ class AppTheme {
     border: Border.all(color: cardBorderColor),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.2),
+        color: Colors.black.withValues(alpha: 0.2),
         blurRadius: 20,
         offset: const Offset(0, 8),
       ),
@@ -51,7 +51,7 @@ class AppTheme {
     ),
     boxShadow: [
       BoxShadow(
-        color: const Color(0xFF1F6E8A).withOpacity(0.4),
+        color: const Color(0xFF1F6E8A).withValues(alpha: 0.4),
         blurRadius: 20,
         offset: const Offset(0, 10),
       ),

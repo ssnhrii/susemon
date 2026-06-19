@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -37,8 +37,9 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
         setState(() { _nodes = ids; _nodeId = ids.first; });
         _fetch();
       } else {
-        sensor.refresh().then((_) {
-          final freshIds = context.read<SensorProvider>().latest.map((r) => r.nodeId).toList();
+        final sensorProvider = context.read<SensorProvider>();
+        sensorProvider.refresh().then((_) {
+          final freshIds = sensorProvider.latest.map((r) => r.nodeId).toList();
           if (freshIds.isNotEmpty && mounted) {
             setState(() { _nodes = freshIds; _nodeId = freshIds.first; });
             _fetch();
@@ -131,7 +132,7 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
           Container(
             width: 38, height: 38,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.12),
+              color: AppColors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.history_rounded, color: AppColors.primary, size: 20),
@@ -151,9 +152,9 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.12),
+                  color: AppColors.success.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
                 ),
                 child: const Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.download_rounded, size: 14, color: AppColors.success),
@@ -297,8 +298,8 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
               rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             extraLinesData: ExtraLinesData(horizontalLines: [
-              HorizontalLine(y: 35, color: AppColors.warning.withOpacity(0.4), strokeWidth: 1, dashArray: [5, 4]),
-              HorizontalLine(y: 40, color: AppColors.danger.withOpacity(0.4), strokeWidth: 1, dashArray: [5, 4]),
+              HorizontalLine(y: 35, color: AppColors.warning.withValues(alpha: 0.4), strokeWidth: 1, dashArray: [5, 4]),
+              HorizontalLine(y: 40, color: AppColors.danger.withValues(alpha: 0.4), strokeWidth: 1, dashArray: [5, 4]),
             ]),
             lineBarsData: [
               LineChartBarData(
@@ -317,11 +318,11 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
                     return FlDotCirclePainter(radius: 4, color: AppColors.statusColor(r.status), strokeWidth: 0);
                   },
                 ),
-                belowBarData: BarAreaData(show: true, color: AppColors.primary.withOpacity(0.06)),
+                belowBarData: BarAreaData(show: true, color: AppColors.primary.withValues(alpha: 0.06)),
               ),
               LineChartBarData(
                 spots: humSpots, isCurved: true,
-                color: const Color(0xFF29B6F6).withOpacity(0.6), barWidth: 1.5,
+                color: const Color(0xFF29B6F6).withValues(alpha: 0.6), barWidth: 1.5,
                 dotData: const FlDotData(show: false),
                 dashArray: [4, 3],
                 belowBarData: BarAreaData(show: false),
@@ -387,7 +388,7 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: sc.withOpacity(0.12), borderRadius: BorderRadius.circular(5),
+                    color: sc.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(r.status,
                       style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: sc)),

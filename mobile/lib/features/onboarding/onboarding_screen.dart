@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../auth/login_screen.dart';
 
@@ -133,9 +133,9 @@ class _OnboardPage extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.bgCard,
-              border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 1.5),
               boxShadow: [
-                BoxShadow(color: AppColors.primary.withOpacity(0.2), blurRadius: 40, spreadRadius: 4),
+                BoxShadow(color: AppColors.primary.withValues(alpha: 0.2), blurRadius: 40, spreadRadius: 4),
               ],
             ),
             child: Icon(icon, size: 56, color: AppColors.primary),

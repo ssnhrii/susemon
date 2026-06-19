@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -105,7 +105,7 @@ class _SkeletonBoxState extends State<SkeletonBox> with SingleTickerProviderStat
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        color: AppColors.bgCardAlt.withOpacity(_anim.value + 0.3),
+        color: AppColors.bgCardAlt.withValues(alpha: _anim.value + 0.3),
         borderRadius: BorderRadius.circular(widget.radius),
       ),
     ),
@@ -336,15 +336,15 @@ class _StatusChipAnimatedState extends State<StatusChipAnimated>
       builder: (_, __) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.12 * _pulse.value + 0.05),
+          color: color.withValues(alpha: 0.12 * _pulse.value + 0.05),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: color.withOpacity(0.3 * _pulse.value + 0.1)),
+          border: Border.all(color: color.withValues(alpha: 0.3 * _pulse.value + 0.1)),
         ),
         child: Text(
           widget.status,
           style: TextStyle(
             fontSize: 9, fontWeight: FontWeight.w700,
-            color: color.withOpacity(_pulse.value),
+            color: color.withValues(alpha: _pulse.value),
           ),
         ),
       ),

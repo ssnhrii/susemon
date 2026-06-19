@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -46,7 +46,7 @@ class NotifikasiPageNew extends StatelessWidget {
                                 alignment: Alignment.centerRight,
                                 padding: const EdgeInsets.only(right: 20),
                                 decoration: BoxDecoration(
-                                  color: AppColors.success.withOpacity(0.2),
+                                  color: AppColors.success.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: const Icon(Icons.done_all_rounded, color: AppColors.success),
@@ -87,7 +87,7 @@ class _Header extends StatelessWidget {
       Container(
         width: 38, height: 38,
         decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.12),
+          color: AppColors.primary.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(10),
         ),
         child: const Icon(Icons.notifications_rounded, color: AppColors.primary, size: 20),
@@ -148,7 +148,7 @@ class _NotifCard extends StatelessWidget {
           color: AppColors.bgCard,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: notif.isRead ? AppColors.cardBorder : _color.withOpacity(0.4),
+            color: notif.isRead ? AppColors.cardBorder : _color.withValues(alpha: 0.4),
             width: notif.isRead ? 1 : 1.5,
           ),
         ),
@@ -156,10 +156,10 @@ class _NotifCard extends StatelessWidget {
           Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
-              color: _color.withOpacity(notif.isRead ? 0.07 : 0.14),
+              color: _color.withValues(alpha: notif.isRead ? 0.07 : 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(_icon, color: _color.withOpacity(notif.isRead ? 0.5 : 1), size: 22),
+            child: Icon(_icon, color: _color.withValues(alpha: notif.isRead ? 0.5 : 1), size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -190,7 +190,7 @@ class _NotifCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: _color.withOpacity(0.12), borderRadius: BorderRadius.circular(5),
+                    color: _color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(notif.nodeId!,
                       style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _color)),
