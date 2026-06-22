@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_sizes.dart';
@@ -67,10 +67,10 @@ class AppNavbar extends StatelessWidget {
           vertical: AppSizes.paddingS,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? AppColors.primary.withOpacity(0.3) : Colors.transparent,
+            color: isSelected ? AppColors.primary.withValues(alpha: 0.3) : Colors.transparent,
             width: 1,
           ),
         ),

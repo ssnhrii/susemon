@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/sensor_model.dart';
@@ -37,6 +37,7 @@ class _NodesPageState extends State<NodesPage> {
     final idCtrl   = TextEditingController();
     final nameCtrl = TextEditingController();
     final locCtrl  = TextEditingController();
+    final api      = context.read<ApiService>();
 
     await showDialog(
       context: context,
@@ -57,15 +58,18 @@ class _NodesPageState extends State<NodesPage> {
           ElevatedButton(
             onPressed: () async {
               if (idCtrl.text.isEmpty || nameCtrl.text.isEmpty || locCtrl.text.isEmpty) return;
+              final nodeId   = idCtrl.text.trim().toUpperCase();
+              final nodeName = nameCtrl.text.trim();
+              final location = locCtrl.text.trim();
               Navigator.pop(context);
               try {
-                await context.read<ApiService>().createNode({
-                  'node_id': idCtrl.text.trim().toUpperCase(),
-                  'node_name': nameCtrl.text.trim(),
-                  'location': locCtrl.text.trim(),
+                await api.createNode({
+                  'node_id': nodeId,
+                  'node_name': nodeName,
+                  'location': location,
                   'is_active': true,
                 });
-                _fetch();
+                if (mounted) _fetch();
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -84,6 +88,7 @@ class _NodesPageState extends State<NodesPage> {
   }
 
   Future<void> _deleteNode(SensorNode node) async {
+    final api = context.read<ApiService>();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -101,8 +106,8 @@ class _NodesPageState extends State<NodesPage> {
     );
     if (confirm == true) {
       try {
-        await context.read<ApiService>().deleteNode(node.nodeId);
-        _fetch();
+        await api.deleteNode(node.nodeId);
+        if (mounted) _fetch();
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -206,7 +211,7 @@ class _NodeCard extends StatelessWidget {
         Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.15),
+            color: AppColors.primary.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Icon(Icons.sensors, color: AppColors.primary, size: 20),
@@ -218,7 +223,7 @@ class _NodeCard extends StatelessWidget {
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
               child: Text(node.nodeId,
                   style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.primary)),
             ),

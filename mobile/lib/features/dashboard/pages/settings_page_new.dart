@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
@@ -153,7 +153,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.12),
+          color: AppColors.primary.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(Icons.settings_rounded, color: AppColors.primary, size: 20),
@@ -167,7 +167,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
-              color: auth.isAdmin ? AppColors.warning.withOpacity(0.15) : AppColors.primary.withOpacity(0.15),
+              color: auth.isAdmin ? AppColors.warning.withValues(alpha: 0.15) : AppColors.primary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -190,13 +190,13 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       decoration: BoxDecoration(
         color: AppColors.bgCard,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(children: [
         Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(wsConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded, color: color, size: 22),
@@ -236,7 +236,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
         Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.12),
+            color: AppColors.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, size: 14, color: AppColors.primary),
@@ -278,7 +278,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.danger.withOpacity(0.12),
+            color: AppColors.danger.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text('${_threshold.toStringAsFixed(0)}°C',
@@ -291,7 +291,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
           activeTrackColor: AppColors.primary,
           inactiveTrackColor: AppColors.bgCardAlt,
           thumbColor: AppColors.primary,
-          overlayColor: AppColors.primary.withOpacity(0.15),
+          overlayColor: AppColors.primary.withValues(alpha: 0.15),
           trackHeight: 3,
         ),
         child: Slider(
@@ -313,7 +313,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
         const SizedBox(height: 2),
         Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
       ])),
-      Switch(value: val, onChanged: onChange, activeColor: AppColors.primary),
+      Switch(value: val, onChanged: onChange, activeThumbColor: AppColors.primary),
     ],
   );
 
