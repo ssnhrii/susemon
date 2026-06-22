@@ -84,6 +84,20 @@ def _normalize_timestamp(ts_str: str) -> str:
 def _on_message(client, userdata, msg):
     try:
         raw = json.loads(msg.payload.decode("utf-8"))
+        
+        # Deteksi & dekode otomatis jika payload berasal dari gateway Dragino LG02 (hex-encoded data)
+        if isinstance(raw, dict) and "data" in raw and isinstance(raw["data"], str):
+            try:
+                hex_str = raw["data"].strip()
+                decoded_bytes = bytes.fromhex(hex_str)
+                decoded_str = decoded_bytes.decode("utf-8")
+                decoded_json = json.loads(decoded_str)
+                if isinstance(decoded_json, dict) and "node_id" in decoded_json:
+                    logger.info(f"MQTT IN (Dragino Hex Decoded): {decoded_json}")
+                    raw = decoded_json
+            except Exception as hex_err:
+                logger.debug(f"Percobaan decode hex gagal (mungkin bukan data Dragino): {hex_err}")
+
         logger.info(f"MQTT IN: {raw}")
         # Normalisasi timestamp ke UTC — konsisten di semua layer
         raw["timestamp"] = _normalize_timestamp(raw.get("timestamp", ""))
@@ -265,6 +279,15 @@ async def _process(data: dict):
             "risk":       ai_result.get("risk_level", "LOW") if ai_result else "LOW",
             "confidence": ai_result.get("confidence", 0) if ai_result else 0,
         }
+        
+        # Dukung Dragino LG02: tambahkan representasi hex di field 'data'
+        # Standard gateway akan mengabaikan field ini, Dragino LG02 akan menggunakannya untuk transmit LoRa
+        try:
+            downlink_str = json.dumps(downlink)
+            downlink["data"] = downlink_str.encode("utf-8").hex()
+        except Exception as hex_err:
+            logger.error(f"Gagal menyusun payload hex untuk Dragino: {hex_err}")
+
         _mqtt_client.publish("sensor/ai_result", json.dumps(downlink))
         logger.info(f"Downlink → {node_id}: {final_status} | {downlink['risk']} | {downlink['confidence']}%")
 
