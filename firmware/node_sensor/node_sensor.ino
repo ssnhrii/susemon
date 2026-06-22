@@ -1,5 +1,5 @@
 ﻿/**
- * SUSEMON - Node Sensor v2.1
+ * SUSEMON - Node Sensor v2.2
  * Hardware : LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276 + OLED built-in)
  * Sensor   : DHT22
  * Kirim data MENTAH, terima status AI via downlink
@@ -11,6 +11,7 @@
  *   LED Merah   -> GPIO 15  (BERBAHAYA dari AI)
  *   LED Biru    -> GPIO 25  (TX LoRa aktif)
  *   Buzzer      -> GPIO 14
+ *   Switch ON/OFF -> GPIO 33  (INPUT_PULLUP, tekan = pause/resume kirim data)
  *   OLED SDA    -> GPIO 21  (built-in)
  *   OLED SCL    -> GPIO 22  (built-in)
  *   LoRa RST    -> GPIO 23  (built-in)
@@ -56,6 +57,12 @@
 #define LED_BIRU    25  // GPIO25 — TX LoRa aktif
 #define BUZZER_PIN  14  // GPIO14 — Buzzer
 
+// ── Pin Switch ON/OFF — T3 V1.6.1 ────────────────────────────────────────────
+// GPIO33 aman: tidak konflik LoRa/OLED/DHT/Flash, bukan input-only
+// Wiring: satu kaki switch ke GPIO33, kaki lain ke GND
+// Mode INPUT_PULLUP — LOW saat ditekan
+#define SWITCH_PIN  33
+
 // ── OLED — T3 V1.6.1 built-in ────────────────────────────────────────────────
 // SDA=21, SCL=22 (sesuai pinout resmi T3 V1.6.1)
 #define OLED_SDA  21
@@ -69,13 +76,16 @@ float  humidity    = 0.0;
 int    txCount     = 0;
 int    failCount   = 0;
 bool   loraReady   = false;
+bool   sendEnabled = true;   // Status switch: true = aktif kirim data
 
 String aiStatus  = "MENUNGGU";
 String aiRisk    = "-";
 int    aiConf    = 0;
 int    lastRssi  = 0;   // RSSI downlink terakhir dari gateway
-unsigned long lastDownlink = 0;
-unsigned long lastSend     = 0;
+unsigned long lastDownlink  = 0;
+unsigned long lastSend      = 0;
+unsigned long lastSwitchMs  = 0;  // debounce switch
+#define SWITCH_DEBOUNCE_MS  300   // 300ms debounce
 
 
 void setup() {
@@ -85,6 +95,7 @@ void setup() {
   pinMode(LED_MERAH,  OUTPUT);
   pinMode(LED_BIRU,   OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT_PULLUP);  // Switch ON/OFF — LOW saat ditekan
 
   testLED();
 
@@ -121,8 +132,31 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // Kirim data mentah setiap SEND_INTERVAL
-  if (now - lastSend >= SEND_INTERVAL) {
+  // ── Cek Switch ON/OFF (dengan debounce) ──────────────────────────────────
+  if (digitalRead(SWITCH_PIN) == LOW && (now - lastSwitchMs > SWITCH_DEBOUNCE_MS)) {
+    lastSwitchMs = now;
+    sendEnabled = !sendEnabled;
+    Serial.printf("[SWITCH] Kirim data: %s\n", sendEnabled ? "ON" : "OFF");
+
+    if (sendEnabled) {
+      buzzerBeep(2, 80);   // 2 beep pendek: aktif
+      Serial.println("[SWITCH] Node aktif — mulai kirim data");
+    } else {
+      buzzerBeep(1, 400);  // 1 beep panjang: pause
+      // Matikan semua LED saat pause
+      digitalWrite(LED_HIJAU,  LOW);
+      digitalWrite(LED_KUNING, LOW);
+      digitalWrite(LED_MERAH,  LOW);
+      Serial.println("[SWITCH] Node pause — kirim data dihentikan");
+    }
+    updateDisplay();
+
+    // Tunggu tombol dilepas sebelum lanjut (anti-bounce)
+    while (digitalRead(SWITCH_PIN) == LOW) delay(10);
+  }
+
+  // Kirim data mentah setiap SEND_INTERVAL (hanya jika sendEnabled)
+  if (sendEnabled && (now - lastSend >= SEND_INTERVAL)) {
     lastSend = now;
     if (readSensor()) {
       sendRawData();
@@ -268,8 +302,14 @@ void updateDisplay() {
   display.setTextColor(SSD1306_BLACK);
   display.setCursor(2, 2);
   display.print("SUSEMON  NODE " NODE_ID);
-  static bool blink = false; blink = !blink;
-  display.fillRect(119, 2, 7, 7, blink ? SSD1306_BLACK : SSD1306_WHITE);
+  // Tampilkan indikator PAUSE di header jika switch OFF
+  if (!sendEnabled) {
+    display.setCursor(90, 2);
+    display.print("[PAUSE]");
+  } else {
+    static bool blink = false; blink = !blink;
+    display.fillRect(119, 2, 7, 7, blink ? SSD1306_BLACK : SSD1306_WHITE);
+  }
   display.setTextColor(SSD1306_WHITE);
 
   // ══ BARIS 2: Suhu & Humid ══
@@ -299,29 +339,35 @@ void updateDisplay() {
   // ══ Divider ══
   display.drawLine(0, 43, 127, 43, SSD1306_WHITE);
 
-  // ══ BARIS 4: Status AI ══
+  // ══ BARIS 4: Status AI atau PAUSE ══
   display.setCursor(0, 45);
-  display.print("AI    : ");
-  if (aiStatus == "MENUNGGU") {
-    display.print("Menunggu...");
-  } else if (isOffline) {
-    display.print(aiStatus + " (offline)");
+  if (!sendEnabled) {
+    display.print("** NODE  PAUSED **");
   } else {
-    display.print(aiStatus);
-    display.print("  ");
-    display.print(aiConf);
-    display.print("%");
+    display.print("AI    : ");
+    if (aiStatus == "MENUNGGU") {
+      display.print("Menunggu...");
+    } else if (isOffline) {
+      display.print(aiStatus + " (offline)");
+    } else {
+      display.print(aiStatus);
+      display.print("  ");
+      display.print(aiConf);
+      display.print("%");
+    }
   }
 
-  // ══ BARIS 5: Risk ══
+  // ══ BARIS 5: Risk atau instruksi switch ══
   display.setCursor(0, 55);
-  display.print("Risk  : ");
-  if (aiStatus == "MENUNGGU") {
-    display.print("--");
+  if (!sendEnabled) {
+    display.print("Tekan switch utk ON");
   } else {
-    display.print(aiRisk);
-    if (isDanger) {
-      display.print(" !");
+    display.print("Risk  : ");
+    if (aiStatus == "MENUNGGU") {
+      display.print("--");
+    } else {
+      display.print(aiRisk);
+      if (isDanger) display.print(" !");
     }
   }
 
