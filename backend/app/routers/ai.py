@@ -84,9 +84,9 @@ async def get_prediction(node_id: str, limit: int = Query(30), user=Depends(get_
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
-                INSERT INTO ai_predictions (node_id, prediction_type, confidence, predicted_value, prediction_time)
-                VALUES (%s,'temperature',%s,%s,DATE_ADD(NOW(), INTERVAL 30 MINUTE))
-            """, (node_id, result["confidence"], result.get("predicted_temp")))
+                INSERT INTO ai_predictions (node_id, prediction_type, confidence, predicted_value, risk_level, prediction_time)
+                VALUES (%s, 'temperature', %s, %s, %s, DATE_ADD(NOW(), INTERVAL 30 MINUTE))
+            """, (node_id, result["confidence"], result.get("predicted_temp"), result.get("risk_level", "LOW")))
 
     await _maybe_notify(node_id, result)
     return {"success": True, "data": {"node_id": node_id, **result}}

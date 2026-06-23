@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SUSEMON - Node Sensor v2.2
  * Hardware : LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276 + OLED built-in)
  * Sensor   : DHT22
@@ -15,8 +15,8 @@
  *   OLED SCL    -> GPIO 22  (built-in)
  *   LoRa RST    -> GPIO 23  (built-in)
  *
- * Uplink  : {"node_id":"A1","temperature":28.5,"humidity":62.0}
- * Downlink: {"node_id":"A1","status":"AMAN","risk":"LOW","confidence":91}
+ * Uplink  : {"node_id":"TA11","temperature":28.5,"humidity":62.0}
+ * Downlink: {"node_id":"TA11","status":"AMAN","risk":"LOW","confidence":91}
  */
 
 #include <SPI.h>
@@ -28,7 +28,7 @@
 #include <ArduinoJson.h>
 
 // ── Konfigurasi ───────────────────────────────────────────────────────────────
-#define NODE_ID          "A1"
+#define NODE_ID          "TA11"
 #define SEND_INTERVAL    5000    // Kirim data setiap 5 detik
 #define DOWNLINK_TIMEOUT 60000   // 60 detik — toleransi jika backend lambat
 #define DHT_RETRY_MAX    3
@@ -41,7 +41,7 @@
 #define LORA_SS    18
 #define LORA_RST   23
 #define LORA_DIO0  26
-#define LORA_BAND  923E6
+#define LORA_BAND  915E6  // 915 MHz — sesuai frekuensi yang diaktifkan di Dragino LG02
 
 // ── Pin DHT22 — T3 V1.6.1 ────────────────────────────────────────────────────
 // GPIO13 aman (tidak konflik LoRa/OLED/Flash)
@@ -110,6 +110,7 @@ void setup() {
   LoRa.setSignalBandwidth(125E3);
   LoRa.setCodingRate4(5);
   LoRa.setTxPower(20);
+  LoRa.setSyncWord(0x12); // 0x12 = nilai "18" di UI Dragino LG02
   LoRa.enableCrc();
 
   loraReady = true;
@@ -339,7 +340,7 @@ void showSplash() {
   display.setCursor(22, 33);
   display.print("Node Sensor " NODE_ID);
   display.setCursor(14, 43);
-  display.print("DHT22 | LoRa 923MHz");
+  display.print("DHT22 | LoRa 915MHz");
   display.setCursor(22, 53);
   display.print("PBL-TRPL412 v2.1");
   display.display();

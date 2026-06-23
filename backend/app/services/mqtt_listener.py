@@ -121,6 +121,12 @@ async def _process(data: dict):
     node_id     = data.get("node_id")
     temperature = float(data.get("temperature", 0))
     humidity    = float(data.get("humidity", 0))
+    rssi        = data.get("rssi")
+    if rssi is not None:
+        try:
+            rssi = int(rssi)
+        except (ValueError, TypeError):
+            rssi = None
 
     if not node_id:
         logger.warning("MQTT data tanpa node_id, diabaikan")
@@ -149,16 +155,22 @@ async def _process(data: dict):
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
-                    (node_id, temperature, humidity, status_threshold)
-                )
+                if rssi is not None:
+                    await cur.execute(
+                        "INSERT INTO sensor_data (node_id, temperature, humidity, status, rssi) VALUES (%s,%s,%s,%s,%s)",
+                        (node_id, temperature, humidity, status_threshold, rssi)
+                    )
+                else:
+                    await cur.execute(
+                        "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
+                        (node_id, temperature, humidity, status_threshold)
+                    )
                 new_id = cur.lastrowid
     except Exception as e:
         logger.error(f"DB insert error: {e}")
         return
 
-    logger.info(f"DB saved id={new_id}: node={node_id} temp={temperature} hum={humidity}")
+    logger.info(f"DB saved id={new_id}: node={node_id} temp={temperature} hum={humidity} rssi={rssi}")
 
     # ── 2. Ambil 50 data terakhir untuk AI ──
     async with pool.acquire() as conn:
@@ -288,7 +300,7 @@ async def _process(data: dict):
         except Exception as hex_err:
             logger.error(f"Gagal menyusun payload hex untuk Dragino: {hex_err}")
 
-        _mqtt_client.publish("sensor/ai_result", json.dumps(downlink))
+        _mqtt_client.publish(settings.MQTT_DOWNLINK_TOPIC, json.dumps(downlink))
         logger.info(f"Downlink → {node_id}: {final_status} | {downlink['risk']} | {downlink['confidence']}%")
 
 

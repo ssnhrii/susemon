@@ -1,92 +1,173 @@
-# 📘 Panduan Hubungan Gateway Dragino LG02 & Sistem SUSEMON
+# Panduan Implementasi Gateway Dragino LG02 — SUSEMON
 
-Panduan ini menjelaskan cara menghubungkan gateway **Dragino LG02** dengan sistem pemantauan **SUSEMON** (Backend FastAPI & MQTT Broker).
+## Info Perangkat
+| Parameter | Nilai |
+|---|---|
+| Model | Dragino LG02 (HE) |
+| IP Gateway | `10.130.1.1` |
+| Firmware | LG02_LG08-5.1.1 |
+| Frekuensi LoRa | 915 MHz |
+| Sync Word | `0x12` (18 desimal) |
 
 ---
 
-## 🌐 1. Topologi Jaringan & Alur Hubungan
-
-Pastikan Laptop Server dan Dragino LG02 berada di satu jaringan lokal (Wi-Fi/LAN) yang sama.
+## Topologi Sistem
 
 ```
-┌─────────────────┐       LoRa (Radio)       ┌──────────────────┐
-│  Node Sensor    │ ───────────────────────▶ │  Dragino LG02    │
-│  (LILYGO T3)    │ ◀─────────────────────── │  LoRa Gateway    │
-└─────────────────┘                          └──────────────────┘
-                                                       │
-                                                       │ MQTT (TCP/IP)
-                                                       ▼
-                                             ┌──────────────────┐
-                                             │  Laptop Server   │
-                                             │  (Mosquitto +    │
-                                             │   Backend API)   │
-                                             └──────────────────┘
+Internet
+   │
+   │ (WAN)
+┌──▼─────────────────┐
+│  Dragino LG02      │  IP: 10.130.1.1
+│  LoRa Gateway      │
+└──┬─────────────────┘
+   │ (LAN — kabel Ethernet)
+   │
+┌──▼─────────────────┐
+│  Laptop Server     │  IP: 10.130.1.206
+│  Mosquitto :1883   │  (assigned oleh Dragino DHCP)
+│  FastAPI Backend   │
+└────────────────────┘
 ```
 
-> [!IMPORTANT]
-> Catat **IP Address Laptop Server** Anda (misalnya: `192.168.1.100` atau `10.130.1.206`). IP ini akan digunakan sebagai alamat **MQTT Broker** pada pengaturan Dragino.
+---
+
+## Langkah 1: Persiapan Server (Laptop)
+
+### 1.1 Jalankan SUSEMON
+Klik dua kali atau jalankan:
+```
+start_susemon.bat
+```
+Pastikan Mosquitto dan Backend FastAPI sudah berjalan sebelum mengkonfigurasi Dragino.
+
+### 1.2 Verifikasi Mosquitto berjalan
+```cmd
+netstat -an | findstr :1883
+```
+Hasilnya harus ada `0.0.0.0:1883 ... LISTENING`.
 
 ---
 
-## 🔧 2. Konfigurasi Gateway Dragino LG02
+## Langkah 2: Konfigurasi Dragino LG02
 
-### A. Pengaturan LoRa (Custom/Raw)
-1. Buka browser dan akses Web Admin Dragino di **`http://10.130.1.1`** (IP default Dragino).
-   * **Username**: `root`
-   * **Password**: `dragino`
-2. Navigasi ke menu **Service** -> **LoRaWan GateWay**.
-3. Atur parameter berikut pada **LoRaWAN Server Settings**:
-   * **IoT Service**: Pilih **`LoRaWanRAW forwarder`** (bukan LoRaWAN/semtech).
-4. Atur parameter berikut pada **Radio Settings (Radio A & B)**:
-   * **Frequency**: `923000000` (923 MHz - AS923)
-   * **Spreading Factor (SF)**: `SF7`
-   * **Signal Bandwidth**: `125 kHz`
-   * **Coding Rate**: `4/5`
-   * **LoRa Sync Word**: **`18`** *(Sangat penting! Wajib diubah dari default `52` agar gateway dapat membaca paket RAW point-to-point)*.
-5. Klik **Save & Apply** di bagian bawah halaman.
+Buka browser → akses **`http://10.130.1.1`**
+- Username: `root`
+- Password: `dragino`
 
-### B. Pengaturan MQTT
-1. Navigasi ke menu **Service** -> **MQTT**.
-2. Masukkan konfigurasi server broker:
-   * **Select Server**: `General Server`
-   * **Broker Address**: *Isi dengan IP Laptop Server Anda* (contoh: `10.130.1.206` atau `192.168.1.100`)
-   * **Broker Port**: `1883`
-   * *Kosongkan username dan password jika tidak diset pada broker*.
-3. Pada tabel **MQTT Channel**, klik **Add** lalu tambahkan dua topik berikut:
+### 2.1 Konfigurasi LoRa
+Navigasi: **Service → LoRaWan GateWay**
 
-| Nama Channel (Lokal) | Remote Channel (Topik MQTT) | Keterangan |
-| :--- | :--- | :--- |
-| **uplink** | `sensor/data` | Mengirim data mentah sensor ke server |
-| **downlink** | `sensor/ai_result` | Menerima status keputusan AI dari server |
+**LoRaWAN Server Settings:**
+| Parameter | Nilai |
+|---|---|
+| IoT Service | **`LoRaRAW forward to MQTT server`** |
 
-4. Klik **Save & Apply** dan tunggu hingga gateway melakukan restart modul.
+**Radio Settings (Radio A & Radio B):**
+| Parameter | Nilai |
+|---|---|
+| Frequency | `915000000` |
+| Spreading Factor | `SF7` |
+| Signal Bandwidth | `125 kHz` |
+| Coding Rate | `4/5` |
+| LoRa Sync Word | **`18`** (desimal dari `0x12`) |
 
----
+Klik **Save & Apply**.
 
-## 💻 3. Sisi Server (Backend FastAPI)
+### 2.2 Konfigurasi MQTT (muncul setelah pilih IoT Service di atas)
+Field MQTT langsung tersedia di halaman yang sama setelah memilih `LoRaRAW forward to MQTT server`:
 
-Kami telah menerapkan logika integrasi penuh pada backend di file [mqtt_listener.py](file:///C:/laragon/www/susemon/backend/app/services/mqtt_listener.py):
+| Parameter | Nilai |
+|---|---|
+| Select Server | **`General Server`** |
+| Broker Address | `10.130.1.206` |
+| Broker Port | `1883` |
+| Uplink Topic | `sensor/data` |
+| Downlink Topic | `sensor/ai_result` |
+| Username | *(kosongkan)* |
+| Password | *(kosongkan)* |
 
-*   **Proses Uplink (JSON dari Dragino)**:
-    Data sensor yang ditangkap LoRa dikirim Dragino ke broker dengan payload:
-    `{"data": "hex_representation_of_sensor_json"}`.
-    Backend secara otomatis mendeteksi field `data`, mendekode *hex* menjadi string JSON (`{"node_id":"A1","temperature":28.5,...}`), lalu memprosesnya melalui model AI.
-    
-*   **Proses Downlink (Keputusan AI ke Node)**:
-    Hasil analisis AI (`AMAN`, `WASPADA`, `BERBAHAYA`) dikirim balik ke topik `sensor/ai_result`.
-    Backend secara otomatis membungkus status tersebut ke format *hex* di dalam field `data` agar gateway Dragino bisa memancarkannya kembali ke Node Sensor melalui gelombang radio LoRa.
+Klik **Save & Apply** dan tunggu restart modul (~30 detik).
 
 ---
 
-## 🧪 4. Cara Pengujian Hubungan
+## Langkah 3: Upload Firmware Node Sensor
 
-1. **Jalankan Layanan Server**:
-   Jalankan file [start_susemon.bat](file:///C:/laragon/www/susemon/start_susemon.bat) di laptop Anda. Ini akan otomatis mengaktifkan **Mosquitto MQTT Broker**, **Backend FastAPI**, dan **Aplikasi Flutter mobile**.
-2. **Lihat Log Backend**:
-   Saat Node Sensor mengirim data LoRa, Anda akan melihat log di konsol Backend FastAPI:
-   ```bash
-   INFO: MQTT IN (Dragino Hex Decoded): {'node_id': 'A1', 'temperature': 28.5, 'humidity': 62.0}
-   INFO: Downlink → A1: AMAN | LOW | 91%
-   ```
-3. **Pantau Layar Node**:
-   Node sensor (LILYGO T3) akan menerima downlink, menampilkan status `"AMAN"`, `"WASPADA"`, atau `"BERBAHAYA"`, dan menyalakan indikator LED yang sesuai tanpa adanya status jeda (*paused*).
+Flash file `firmware/node_sensor/node_sensor.ino` ke LILYGO T3 V1.6.1 via Arduino IDE.
+
+Verifikasi parameter firmware sudah sesuai:
+```cpp
+#define LORA_BAND  915E6           // ✅ 915 MHz — sama dengan Dragino
+LoRa.setSpreadingFactor(7);        // ✅ SF7
+LoRa.setSignalBandwidth(125E3);    // ✅ 125 kHz
+LoRa.setCodingRate4(5);            // ✅ 4/5
+LoRa.setSyncWord(0x12);            // ✅ = 18 desimal (RAW private)
+```
+
+---
+
+## Langkah 4: Verifikasi Alur Data
+
+Setelah semua berjalan, cek log Backend FastAPI. Saat node mengirim data, Anda akan melihat:
+
+```
+INFO: MQTT connected → subscribed 'sensor/data'
+INFO: MQTT IN (Dragino Hex Decoded): {'node_id': 'TA11', 'temperature': 28.5, 'humidity': 62.0}
+INFO: DB saved id=1: node=TA11 temp=28.5 hum=62.0
+INFO: Downlink → TA11: AMAN | LOW | 91%
+```
+
+---
+
+## Troubleshooting
+
+### Dragino tidak bisa connect ke MQTT Broker
+- Pastikan Laptop dan Dragino di jaringan yang sama
+- Cek firewall Windows — port 1883 sudah dibuka:
+  ```powershell
+  # Jalankan sebagai Administrator (sudah dilakukan)
+  netsh advfirewall firewall add rule name="Mosquitto MQTT" dir=in action=allow protocol=TCP localport=1883
+  ```
+- Jangan isi username/password di Dragino karena Mosquitto dikonfigurasi `allow_anonymous true`
+
+### Node tidak terima downlink
+- Pastikan **Sync Word sama**: node `0x12` = Dragino `18`
+- Pastikan frekuensi sama: keduanya `915 MHz`
+- Setelah TX, firmware otomatis masuk mode `LoRa.receive()` — ini sudah benar
+
+### Data muncul sebagai hex tidak terdekode
+- Backend secara otomatis decode hex payload dari Dragino
+- Format Dragino: `{"data": "7b226e6f64655f6964..."}` → backend decode ke JSON normal
+
+### Cek koneksi MQTT manual
+Install MQTT Explorer atau pakai mosquitto_pub/sub:
+```cmd
+mosquitto_sub -h localhost -p 1883 -t "sensor/data" -v
+```
+Jika ada data masuk, akan tampil di terminal ini.
+
+---
+
+## Format Data
+
+**Uplink (Node → Dragino → Server):**
+Dragino meneruskan payload LoRa sebagai hex di field `data`:
+```json
+{"data": "7b226e6f64655f6964223a2254413131222c..."}
+```
+Backend decode otomatis → menjadi:
+```json
+{"node_id": "TA11", "temperature": 28.5, "humidity": 62.0}
+```
+
+**Downlink (Server → Dragino → Node):**
+```json
+{
+  "node_id": "TA11",
+  "status": "AMAN",
+  "risk": "LOW",
+  "confidence": 91,
+  "data": "7b226e6f64655f6964..."
+}
+```
+Field `data` (hex) dipakai Dragino untuk transmit balik ke node via LoRa.

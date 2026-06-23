@@ -173,10 +173,16 @@ async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
-                (body.node_id, body.temperature, body.humidity, status)
-            )
+            if body.rssi is not None:
+                await cur.execute(
+                    "INSERT INTO sensor_data (node_id, temperature, humidity, status, rssi) VALUES (%s,%s,%s,%s,%s)",
+                    (body.node_id, body.temperature, body.humidity, status, body.rssi)
+                )
+            else:
+                await cur.execute(
+                    "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
+                    (body.node_id, body.temperature, body.humidity, status)
+                )
             if status == "BERBAHAYA":
                 await cur.execute(
                     "INSERT INTO notifications (node_id, title, message, type) VALUES (%s,%s,%s,'critical')",
@@ -187,7 +193,7 @@ async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     return {
         "success": True, "message": "Data berhasil disimpan",
         "data": {"node_id": body.node_id, "temperature": body.temperature,
-                 "humidity": body.humidity, "status": status}
+                 "humidity": body.humidity, "status": status, "rssi": body.rssi}
     }
 
 

@@ -2,6 +2,8 @@
 Database — aiomysql async connection pool
 """
 import aiomysql
+import warnings
+warnings.filterwarnings("ignore", module="aiomysql")
 from app.core.config import settings
 import logging
 
@@ -156,7 +158,7 @@ async def init_db():
             # Seed nodes
             await cur.execute("""
                 INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
-                ('A1','Node Sensor A1','Rack Server Utama'),
+                ('TA11','Node Sensor TA11','Rack Server Utama'),
                 ('B2','Node Sensor B2','Rack Server Backup'),
                 ('C3','Node Sensor C3','Rack Network'),
                 ('D4','Node Sensor D4','Rack Storage')
