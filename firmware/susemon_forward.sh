@@ -46,9 +46,13 @@ while true; do
         DATA=$(cat "$f")
         [ -z "$DATA" ] && rm -f "$f" && continue
 
-        mosquitto_pub -h $SERVER -p $PORT -u $USER -P $PASS -q 1 -t $TOPIC_UP -m "$DATA"
+        # Tambahkan timestamp UTC dari gateway untuk kestabilan histori meski delay/offline
+        TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        DATA_WITH_TS=$(echo "$DATA" | sed "s/}$/,\"timestamp\":\"$TS\"}/")
+
+        mosquitto_pub -h $SERVER -p $PORT -u $USER -P $PASS -q 1 -t $TOPIC_UP -m "$DATA_WITH_TS"
         if [ $? -eq 0 ]; then
-            logger "[SUSEMON] Uplink: $DATA"
+            logger "[SUSEMON] Uplink: $DATA_WITH_TS"
             rm -f "$f"
         fi
     done

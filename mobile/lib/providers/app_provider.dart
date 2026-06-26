@@ -106,6 +106,7 @@ class SensorProvider extends ChangeNotifier {
   bool _loading = false;
   bool _wsConnected = false;
   String? _error;
+  double _tempThreshold = 40.0;
   Timer? _pollTimer;
   Timer? _statsTimer;
   StreamSubscription? _wsSub;
@@ -117,6 +118,7 @@ class SensorProvider extends ChangeNotifier {
   bool get loading                    => _loading;
   bool get wsConnected                => _wsConnected;
   String? get error                   => _error;
+  double get tempThreshold            => _tempThreshold;
 
   String get globalStatus {
     if (_latest.any((r) => r.status == 'BERBAHAYA')) return 'BERBAHAYA';
@@ -128,9 +130,26 @@ class SensorProvider extends ChangeNotifier {
   int get problemCount => _latest.where((r) => r.status != 'AMAN').length;
   int get nodeCount    => _latest.length;
 
+  Future<void> fetchThresholds() async {
+    try {
+      final data = await _api.getThresholds();
+      _tempThreshold = (data['temp_danger'] as num?)?.toDouble() ?? 40.0;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> updateTempThreshold(double val) async {
+    try {
+      _tempThreshold = val;
+      notifyListeners();
+      await _api.updateThresholds(val - 5.0, val);
+    } catch (_) {}
+  }
+
   void start() {
     _fetchLatest();
     _fetchStats();
+    fetchThresholds();
     _ws.connect();
 
     _wsSub = _ws.stream.listen((readings) {

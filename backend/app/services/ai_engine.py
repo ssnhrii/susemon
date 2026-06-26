@@ -5,6 +5,7 @@ Kalibrasi untuk data server room: interval 10 detik, suhu stabil 24-35°C
 """
 import math
 import numpy as np
+from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import IsolationForest
 from typing import List, Dict, Any
 
@@ -23,6 +24,57 @@ def ewma(values: List[float], alpha: float = 0.2) -> float:
     for v in values[1:]:
         result = alpha * v + (1 - alpha) * result
     return result
+
+
+def adaptive_ewma(values: List[float], base_alpha: float = 0.2) -> float:
+    """Adaptive EWMA: alpha meningkat jika terjadi perubahan baseline yang konsisten/cepat"""
+    if not values:
+        return 0.0
+    result = values[0]
+    consecutive_same_sign = 0
+    last_sign = 0
+    for v in values[1:]:
+        diff = v - result
+        abs_diff = abs(diff)
+        
+        # Tentukan tanda deviasi (abaikan noise sangat kecil < 0.05)
+        current_sign = 1 if diff > 0.05 else -1 if diff < -0.05 else 0
+        if current_sign == last_sign and current_sign != 0:
+            consecutive_same_sign += 1
+        else:
+            consecutive_same_sign = 0
+            last_sign = current_sign
+            
+        alpha = base_alpha
+        # Jika deviasi besar (> 0.5°C), naikkan alpha
+        if abs_diff > 0.5:
+            alpha = min(0.6, base_alpha + 0.15 * (abs_diff - 0.5))
+            
+        # Jika terjadi pergeseran baseline permanen (deviasi searah >= 5x berturut-turut)
+        if consecutive_same_sign >= 5:
+            alpha = max(alpha, min(0.8, base_alpha + 0.1 * (consecutive_same_sign - 4)))
+            
+        result = alpha * v + (1 - alpha) * result
+    return result
+
+
+def holt_forecast(values: List[float], steps: float, alpha: float = 0.2, beta: float = 0.1) -> float:
+    """Double Exponential Smoothing (Holt's Linear) untuk peramalan dengan tren"""
+    if not values:
+        return 0.0
+    if len(values) < 2:
+        return values[-1]
+    
+    level = values[0]
+    trend = values[1] - values[0]
+    
+    for i in range(1, len(values)):
+        val = values[i]
+        last_level = level
+        level = alpha * val + (1 - alpha) * (level + trend)
+        trend = beta * (level - last_level) + (1 - beta) * trend
+        
+    return level + steps * trend
 
 
 def std_dev(values: List[float]) -> float:
@@ -49,12 +101,29 @@ def linear_trend(values: List[float]) -> float:
 
 def isolation_forest_score(readings: List[Dict]) -> float:
     """
-    IF hanya reliable jika data punya variasi cukup.
-    Data homogen (server room stabil) → return 0.2 (tidak anomali).
+    IF mendeteksi anomali multi-dimensi.
+    Jika di awal deployment (data < 15), lakukan padding dengan data normal sintetis
+    agar model tidak buta sejak awal.
     """
-    if len(readings) < 15:
+    if not readings:
         return 0.3
+
     X = np.array([[r["temperature"], r["humidity"]] for r in readings])
+    
+    if len(readings) < 15:
+        # Pading data sintetis agar mencapai 15 data points
+        avg_t = float(np.mean(X[:, 0])) if len(readings) > 0 else 27.0
+        avg_h = float(np.mean(X[:, 1])) if len(readings) > 0 else 60.0
+        
+        # Generate synthetic points dengan seed statis agar deterministik
+        np.random.seed(42)
+        pad_size = 15 - len(readings)
+        pad_t = np.random.normal(avg_t, 0.2, pad_size)
+        pad_h = np.random.normal(avg_h, 1.0, pad_size)
+        
+        X_pad = np.column_stack((pad_t, pad_h))
+        X = np.vstack((X_pad, X))
+
     temp_std = float(np.std(X[:, 0]))
     hum_std  = float(np.std(X[:, 1]))
 
@@ -113,24 +182,82 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
     latest     = temps[-1]
     latest_hum = hums[-1]
 
+    # ── Deteksi Seasonality (GMT+7) & Hysteresis Baseline ──
+    try:
+        latest_ts = readings[-1]["timestamp"]
+        from datetime import datetime, timezone, timedelta
+        if isinstance(latest_ts, str):
+            try:
+                dt = datetime.fromisoformat(latest_ts)
+            except Exception:
+                dt = datetime.now(timezone.utc)
+        elif isinstance(latest_ts, datetime):
+            dt = latest_ts
+        else:
+            dt = datetime.now(timezone.utc)
+        
+        # Konversi ke WIB (GMT+7) untuk waktu server room
+        local_dt = dt.astimezone(timezone(timedelta(hours=7)))
+    except Exception:
+        from datetime import datetime, timezone, timedelta
+        local_dt = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
+
+    local_hour = local_dt.hour + local_dt.minute / 60.0
+    
+    # Model fluktuasi harian: puncak suhu jam 14:00 (offset +1.0°C), terendah jam 02:00 (offset -1.0°C)
+    season_offset = math.cos((local_hour - 14) * math.pi / 12) * 1.0
+
+    # Sesuaikan threshold dengan jam (seasonality aware)
+    temp_warning_adj = temp_warning + season_offset
+    temp_danger_adj  = temp_danger  + season_offset
+
+    # ── De-seasonalize seluruh history data untuk statistik yang akurat ──
+    deseason_temps = []
+    for r in readings:
+        try:
+            r_ts = r["timestamp"]
+            if isinstance(r_ts, str):
+                try:
+                    r_dt = datetime.fromisoformat(r_ts)
+                except Exception:
+                    r_dt = datetime.now(timezone.utc)
+            elif isinstance(r_ts, datetime):
+                r_dt = r_ts
+            else:
+                r_dt = datetime.now(timezone.utc)
+            r_local = r_dt.astimezone(timezone(timedelta(hours=7)))
+        except Exception:
+            r_local = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
+        r_hour = r_local.hour + r_local.minute / 60.0
+        r_offset = math.cos((r_hour - 14) * math.pi / 12) * 1.0
+        deseason_temps.append(float(r["temperature"]) - r_offset)
+
+    latest_deseasonalized = latest - season_offset
+
     # ── Trend per jam dari timestamp aktual ──────────────────────────────────
     try:
         ts0 = _parse_ts(readings[0]["timestamp"])
         ts1 = _parse_ts(readings[-1]["timestamp"])
         span_h = (ts1 - ts0) / 3600.0 if ts1 > ts0 else 0.0
         if span_h > 0:
-            # readings-1 step dalam span_h jam
             mult = min((len(readings) - 1) / span_h, 360)  # max 1/10s equiv
         else:
             mult = 360
     except Exception:
         mult = 360
 
-    # ── Statistik ──────────────────────────────────────────────────────────
+    # ── Statistik Seasonality-Aware ──────────────────────────────────────────
     avg_temp  = moving_average(temps)
-    std_temp  = std_dev(temps)
-    ewma_temp = ewma(temps)
-    z_t       = z_score(latest, avg_temp, std_temp)
+    
+    avg_deseason_temp = moving_average(deseason_temps)
+    std_deseason_temp = std_dev(deseason_temps)
+    
+    # Batasi minimal std dev pada 0.2 untuk meminimalkan false positive ketika data sangat stabil
+    z_t = z_score(latest_deseasonalized, avg_deseason_temp, max(std_deseason_temp, 0.2))
+    
+    # Rolling baseline EWMA adaptif dijalankan pada data deseasonalized
+    ewma_temp = adaptive_ewma(deseason_temps)
+    
     trend     = linear_trend(temps)
     trend_h   = trend * mult
 
@@ -139,42 +266,38 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
     z_h      = z_score(latest_hum, avg_hum, std_hum)
 
     # ── Deteksi sinyal ────────────────────────────────────────────────────
-    # Threshold langsung — paling reliable
-    above_danger  = latest >= temp_danger  or latest_hum >= hum_danger
-    above_warning = latest >= temp_warning or latest_hum >= hum_warning
+    # Threshold langsung — disesuaikan dengan seasonality
+    above_danger  = latest >= temp_danger_adj  or latest_hum >= hum_danger
+    above_warning = latest >= temp_warning_adj or latest_hum >= hum_warning
 
-    # Z-score — threshold 2.5σ lebih konservatif dari 2.0σ
+    # Z-score — threshold 2.5σ
     z_temp_anom = abs(z_t) > 2.5
     z_hum_anom  = abs(z_h) > 2.5
 
-    # EWMA deviation — deteksi pergeseran gradual
-    ewma_dev = abs(latest - ewma_temp) > max(2.0 * std_temp, 0.5) if std_temp > 0.1 else False
+    # EWMA deviation — deteksi pergeseran gradual pada data deseasonalized
+    ewma_dev = abs(latest_deseasonalized - ewma_temp) > max(2.0 * std_deseason_temp, 0.5) if std_deseason_temp > 0.1 else False
 
-    # Trend cepat — >3°C/jam (konservatif, sebelumnya 2.0)
+    # Trend cepat — >3°C/jam
     rapid = trend_h > 3.0
 
-    # Isolation Forest — hanya jika data punya variasi
-    if_score  = isolation_forest_score(readings) if len(readings) >= 15 else 0.3
-    if_anomaly = if_score > 0.75 and len(readings) >= 15
+    # Isolation Forest — selalu aktif karena dibootstrap dengan synthetic data
+    if_score  = isolation_forest_score(readings)
+    if_anomaly = if_score > 0.75
 
     signals = [above_danger, z_temp_anom, z_hum_anom, ewma_dev, rapid, if_anomaly]
     signal_count = sum(1 for s in signals if s)
 
     # ── Confidence ────────────────────────────────────────────────────────
-    # Berbasis data quantity + signal quality
-    data_factor = min(len(readings) / 50, 1.0)  # makin banyak data → makin percaya
+    data_factor = min(len(readings) / 50, 1.0)
 
     if signal_count == 0:
-        # Normal — confidence tinggi proporsional dengan data
         base = 65 + int(data_factor * 25)
-        # Kurangi jika mendekati threshold warning
-        margin_temp = temp_warning - latest
+        margin_temp = temp_warning_adj - latest
         margin_hum  = hum_warning  - latest_hum
         if margin_temp < 5 or margin_hum < 5:
-            base -= 10  # mendekati warning → kurang yakin AMAN
+            base -= 10
         confidence = max(55, min(92, base))
     else:
-        # Anomali — bobot sinyal
         w = 0
         if above_danger:  w += 40
         if above_warning and not above_danger: w += 20
@@ -186,9 +309,8 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
         confidence = max(60, min(98, 55 + w))
 
     # ── Status ────────────────────────────────────────────────────────────
-    # Butuh minimal 2 sinyal ATAU threshold terlampaui langsung
     anomaly_detected = signal_count >= 2 or above_danger
-    overheating_risk = latest >= temp_danger or (rapid and latest >= temp_warning - 2)
+    overheating_risk = latest >= temp_danger_adj or (rapid and latest >= temp_warning_adj - 2)
 
     if above_danger or overheating_risk or signal_count >= 4:
         risk_level = "HIGH"
@@ -197,32 +319,53 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
     else:
         risk_level = "LOW"
 
-    # ── Prediksi 30 menit ─────────────────────────────────────────────────
-    # 30 menit = span_h * 6 jika mult reliable, else trend * 18 (10s interval)
-    predicted_temp = round(ewma_temp + trend * 18, 2)
+    # ── Prediksi 30 menit (Hybrid Holt-Seasonal Forecasting) ──
+    try:
+        future_dt = local_dt + timedelta(minutes=30)
+        future_hour = future_dt.hour + future_dt.minute / 60.0
+        future_offset = math.cos((future_hour - 14) * math.pi / 12) * 1.0
+        seasonality_change = future_offset - season_offset
+    except Exception:
+        seasonality_change = 0.0
+
+    # Gunakan Holt's linear trend pada deseason_temps, lalu re-seasonalize dengan future_offset
+    try:
+        ts0 = _parse_ts(readings[0]["timestamp"])
+        ts1 = _parse_ts(readings[-1]["timestamp"])
+        span_s = ts1 - ts0
+        if span_s > 0 and len(readings) > 1:
+            dt_avg = span_s / (len(readings) - 1)
+        else:
+            dt_avg = 10.0
+    except Exception:
+        dt_avg = 10.0
+
+    steps = 1800.0 / dt_avg if dt_avg > 1.0 else 180.0
+    predicted_deseason = holt_forecast(deseason_temps, steps)
+    predicted_temp = round(predicted_deseason + future_offset, 2)
 
     # ── Insights ──────────────────────────────────────────────────────────
     insights = []
-    if above_danger:
-        insights.append(f"Suhu {latest}°C / Lembap {latest_hum}% melewati batas kritis")
-    if overheating_risk and not above_danger:
+    if latest >= temp_danger_adj:
+        insights.append(f"Suhu {latest}°C melewati batas kritis disesuaikan ({temp_danger_adj:.1f}°C)")
+    if latest_hum >= hum_danger:
+        insights.append(f"Kelembapan {latest_hum}% melewati batas kritis ({hum_danger}%)")
+    if overheating_risk and not (latest >= temp_danger_adj):
         insights.append(f"Risiko overheating: suhu {latest}°C naik cepat")
     if rapid:
         insights.append(f"Tren naik cepat: +{trend_h:.1f}°C/jam")
     if z_temp_anom:
         insights.append(f"Suhu abnormal secara statistik (z={z_t:.2f}σ)")
     if ewma_dev:
-        insights.append(f"Deviasi dari tren normal: {latest - ewma_temp:+.2f}°C")
+        insights.append(f"Deviasi dari tren normal: {latest_deseasonalized - ewma_temp:+.2f}°C")
     if if_anomaly:
         insights.append(f"Pola tidak biasa terdeteksi (skor: {if_score:.2f})")
     if z_hum_anom:
         insights.append(f"Kelembapan tidak normal: {latest_hum:.1f}% (z={z_h:.2f}σ)")
-    if above_warning and not above_danger:
-        insights.append(f"Mendekati batas: suhu {latest}°C (warning ≥{temp_warning}°C)")
+    if latest >= temp_warning_adj and latest < temp_danger_adj:
+        insights.append(f"Mendekati batas: suhu {latest}°C (warning disesuaikan ≥{temp_warning_adj:.1f}°C)")
 
-    methods = ["moving_average", "ewma", "z_score", "linear_trend"]
-    if len(readings) >= 15:
-        methods.append("isolation_forest")
+    methods = ["moving_average", "ewma", "z_score", "linear_trend", "isolation_forest"]
 
     return {
         "anomaly_detected":       anomaly_detected,
@@ -232,7 +375,7 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
         "current_temp":           round(latest, 2),
         "current_humidity":       round(latest_hum, 2),
         "avg_temp":               round(avg_temp, 2),
-        "ewma_temp":              round(ewma_temp, 2),
+        "ewma_temp":              round(ewma_temp + season_offset, 2), # kembalikan dalam bentuk raw/seasonal untuk display
         "predicted_temp":         predicted_temp,
         "z_score_temp":           round(z_t, 3),
         "z_score_humidity":       round(z_h, 3),

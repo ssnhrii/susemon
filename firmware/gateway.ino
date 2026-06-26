@@ -1,5 +1,5 @@
 /**
- * SUSEMON - Gateway v1.0
+ * SUSEMON - Gateway v1.1
  * Hardware : TTGO LORA32 T22_V1.1 (ESP32 + SX1276)
  * Fungsi   : LoRa ↔ MQTT Bridge (menggantikan Dragino TX yang lemah)
  *
@@ -23,6 +23,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <time.h>
+#include <vector>
 
 // ── WiFi ──────────────────────────────────────────────────────────────────────
 #define WIFI_SSID    "IoT_Susemon"
@@ -61,6 +63,24 @@ int  upCount  = 0;
 int  downCount = 0;
 bool loraReady = false;
 
+// ── Buffer Queue untuk Offline ───────────────────────────────────────────────
+std::vector<String> msgBuffer;
+const int MAX_BUFFER_SIZE = 100; // Simpan hingga 100 data (~15 menit offline)
+
+// ── NTP Helper ────────────────────────────────────────────────────────────────
+String getISO8601Timestamp() {
+  time_t now;
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("[NTP] Gagal mengambil waktu");
+    return "";
+  }
+  char buffer[25];
+  // Format: YYYY-MM-DDTHH:MM:SSZ (UTC)
+  strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+  return String(buffer);
+}
+
 // ── MQTT callback — terima downlink dari backend ──────────────────────────────
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String msg = "";
@@ -90,6 +110,9 @@ void connectWiFi() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\n[WiFi] OK — IP: %s\n", WiFi.localIP().toString().c_str());
+    // Inisialisasi NTP setelah koneksi WiFi berhasil (UTC)
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.println("[NTP] Jam disinkronkan ke UTC");
   } else {
     Serial.println("\n[WiFi] FAILED");
   }
@@ -100,8 +123,8 @@ void connectMQTT() {
   while (!mqtt.connected()) {
     Serial.print("[MQTT] Connecting...");
     if (mqtt.connect(MQTT_CLIENT, MQTT_USER, MQTT_PASS)) {
-      mqtt.subscribe(TOPIC_DOWN);
-      Serial.printf("OK — subscribed to %s\n", TOPIC_DOWN);
+      mqtt.subscribe(TOPIC_DOWN, 1); // Subscribe dengan QoS 1
+      Serial.printf("OK — subscribed to %s (QoS 1)\n", TOPIC_DOWN);
     } else {
       Serial.printf("FAILED rc=%d, retry 3s\n", mqtt.state());
       delay(3000);
@@ -112,9 +135,9 @@ void connectMQTT() {
 void setup() {
   Serial.begin(115200);
   Serial.println("========================================");
-  Serial.println("  SUSEMON Gateway v1.0");
+  Serial.println("  SUSEMON Gateway v1.1");
   Serial.println("  Hardware: TTGO LORA32 T22_V1.1");
-  Serial.println("  LoRa → WiFi → MQTT Bridge");
+  Serial.println("  LoRa → WiFi → MQTT Bridge (QoS 1 + Buffer)");
   Serial.println("========================================");
 
   // Init LoRa
@@ -173,21 +196,46 @@ void loop() {
     if (deserializeJson(doc, raw) == DeserializationError::Ok && doc.containsKey("node_id")) {
       // Tambah RSSI ke payload
       doc["rssi"] = rssi;
+      
+      // Tambah timestamp UTC
+      String ts = getISO8601Timestamp();
+      if (ts.length() > 0) {
+        doc["timestamp"] = ts;
+      }
+
       String payload;
       serializeJson(doc, payload);
 
-      // Publish ke MQTT
-      if (mqtt.publish(TOPIC_UP, payload.c_str())) {
-        upCount++;
-        Serial.printf("[MQTT UP] #%d published: %s\n", upCount, payload.c_str());
-      } else {
-        Serial.println("[MQTT UP] FAILED");
+      // Simpan ke buffer queue jika memori masih cukup
+      if (msgBuffer.size() >= MAX_BUFFER_SIZE) {
+        msgBuffer.erase(msgBuffer.begin()); // Buang data tertua jika penuh (FIFO)
       }
+      msgBuffer.push_back(payload);
+      Serial.printf("[GW] Data disimpan di buffer. Ukuran queue: %d/%d\n", msgBuffer.size(), MAX_BUFFER_SIZE);
     } else {
       Serial.printf("[LoRa RX] Invalid JSON: %s\n", raw.c_str());
     }
 
     LoRa.receive();
+  }
+
+  // Proses dan kirim antrean data jika MQTT terhubung
+  if (mqtt.connected() && !msgBuffer.empty()) {
+    Serial.printf("[GW] Memproses %d data dalam antrean...\n", msgBuffer.size());
+    while (!msgBuffer.empty() && mqtt.connected()) {
+      String payload = msgBuffer.front();
+      
+      // Kirim data ke broker
+      if (mqtt.publish(TOPIC_UP, payload.c_str())) {
+        upCount++;
+        Serial.printf("[MQTT UP] #%d berhasil dikirim: %s\n", upCount, payload.c_str());
+        msgBuffer.erase(msgBuffer.begin()); // Hapus dari antrean jika sukses
+      } else {
+        Serial.println("[MQTT UP] Gagal mengirim, antrean ditahan.");
+        break; // Berhenti memproses antrean, coba lagi iterasi berikutnya
+      }
+      delay(50); // Delay singkat untuk kestabilan transmisi
+    }
   }
 
   delay(5);

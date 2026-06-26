@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 
 from app.core.config import settings
-from app.core.database import get_pool
+from app.core.database import get_pool, get_thresholds
 from app.services.ai_engine import analyze_node
 
 logger = logging.getLogger("susemon")
@@ -50,8 +50,8 @@ def _on_connect(client, userdata, flags, reason_code, properties=None):
     # Kompatibel v1 (rc int) dan v2 (ReasonCode object)
     rc = reason_code if isinstance(reason_code, int) else (0 if str(reason_code) == "Success" else 1)
     if rc == 0:
-        client.subscribe(settings.MQTT_TOPIC)
-        logger.info(f"MQTT connected → subscribed '{settings.MQTT_TOPIC}'")
+        client.subscribe(settings.MQTT_TOPIC, qos=1)
+        logger.info(f"MQTT connected → subscribed '{settings.MQTT_TOPIC}' with QoS 1")
     else:
         logger.error(f"MQTT connect failed: {reason_code}")
 
@@ -266,12 +266,20 @@ async def _process(data: dict):
         return
 
     # ── 1. Simpan data mentah ke DB ──
+    thresholds = await get_thresholds()
     # Status awal dari threshold (akan diupdate setelah AI)
     status_threshold = "AMAN"
-    if temperature > THRESHOLDS["temp_danger"] or humidity > THRESHOLDS["hum_danger"]:
+    if temperature > thresholds["temp_danger"] or humidity > thresholds["hum_danger"]:
         status_threshold = "BERBAHAYA"
-    elif temperature > THRESHOLDS["temp_warning"] or humidity > THRESHOLDS["hum_warning"]:
+    elif temperature > thresholds["temp_warning"] or humidity > thresholds["hum_warning"]:
         status_threshold = "WASPADA"
+
+    # Parse timestamp untuk dimasukkan ke DB
+    timestamp_str = data.get("timestamp")
+    try:
+        dt = datetime.fromisoformat(timestamp_str)
+    except Exception:
+        dt = datetime.now(timezone.utc)
 
     pool = await get_pool()
     new_id = None
@@ -280,20 +288,20 @@ async def _process(data: dict):
             async with conn.cursor() as cur:
                 if rssi is not None:
                     await cur.execute(
-                        "INSERT INTO sensor_data (node_id, temperature, humidity, status, rssi) VALUES (%s,%s,%s,%s,%s)",
-                        (node_id, temperature, humidity, status_threshold, rssi)
+                        "INSERT INTO sensor_data (node_id, temperature, humidity, status, rssi, timestamp) VALUES (%s,%s,%s,%s,%s,%s)",
+                        (node_id, temperature, humidity, status_threshold, rssi, dt)
                     )
                 else:
                     await cur.execute(
-                        "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
-                        (node_id, temperature, humidity, status_threshold)
+                        "INSERT INTO sensor_data (node_id, temperature, humidity, status, timestamp) VALUES (%s,%s,%s,%s,%s)",
+                        (node_id, temperature, humidity, status_threshold, dt)
                     )
                 new_id = cur.lastrowid
     except Exception as e:
         logger.error(f"DB insert error: {e}")
         return
 
-    logger.info(f"DB saved id={new_id}: node={node_id} temp={temperature} hum={humidity} rssi={rssi}")
+    logger.info(f"DB saved id={new_id}: node={node_id} temp={temperature} hum={humidity} rssi={rssi} ts={dt}")
 
     # ── 2. Ambil 50 data terakhir untuk AI ──
     async with pool.acquire() as conn:
@@ -313,7 +321,7 @@ async def _process(data: dict):
     final_status = status_threshold  # fallback ke threshold jika data kurang
 
     if len(readings) >= 3:
-        ai_result = analyze_node(readings, THRESHOLDS)
+        ai_result = analyze_node(readings, thresholds)
 
         # Status raw dari AI
         if ai_result["overheating_risk"] or ai_result["risk_level"] == "HIGH":
@@ -421,8 +429,8 @@ async def _process(data: dict):
             "risk":       ai_result.get("risk_level", "LOW") if ai_result else "LOW",
             "confidence": ai_result.get("confidence", 0) if ai_result else 0,
         }
-        _mqtt_client.publish(settings.MQTT_DOWNLINK_TOPIC, json.dumps(downlink))
-        logger.info(f"Downlink → {node_id}: {final_status} | {downlink['risk']} | {downlink['confidence']}%")
+        _mqtt_client.publish(settings.MQTT_DOWNLINK_TOPIC, json.dumps(downlink), qos=1)
+        logger.info(f"Downlink → {node_id}: {final_status} | {downlink['risk']} | {downlink['confidence']}% (QoS 1)")
 
 
 def start_mqtt_listener(loop: asyncio.AbstractEventLoop):

@@ -139,6 +139,50 @@ async def init_db():
             except Exception:
                 pass
 
+            # system_settings
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    setting_key   VARCHAR(100) PRIMARY KEY,
+                    setting_value VARCHAR(255) NOT NULL,
+                    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                )
+            """)
+            # Seed system_settings jika kosong
+            await cur.execute("SELECT COUNT(*) FROM system_settings")
+            settings_count = (await cur.fetchone())[0]
+            if settings_count == 0:
+                await cur.execute("""
+                    INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES
+                    ('temp_warning', '35'),
+                    ('temp_danger', '40'),
+                    ('hum_warning', '80'),
+                    ('hum_danger', '85')
+                """)
+
+            # Verifikasi dan buat index jika belum ada
+            async def ensure_index(table_name: str, index_name: str, columns: str):
+                try:
+                    await cur.execute(
+                        "SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS "
+                        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s "
+                        "LIMIT 1",
+                        (table_name, index_name)
+                    )
+                    exists = await cur.fetchone()
+                    if not exists:
+                        await cur.execute(f"ALTER TABLE {table_name} ADD INDEX {index_name} ({columns})")
+                        logger.info(f"Created index {index_name} on table {table_name}")
+                except Exception as e:
+                    logger.error(f"Error ensuring index {index_name} on table {table_name}: {e}")
+
+            await ensure_index("sensor_data", "idx_node_ts", "node_id, timestamp")
+            await ensure_index("sensor_data", "idx_ts", "timestamp")
+            await ensure_index("sensor_data", "idx_status", "status")
+            await ensure_index("notifications", "idx_created", "created_at")
+            await ensure_index("notifications", "idx_is_read", "is_read")
+            await ensure_index("notifications", "idx_node_created", "node_id, created_at")
+            await ensure_index("ai_predictions", "idx_node_time", "node_id, prediction_time")
+
             # Seed users — password di-hash dengan bcrypt
             import bcrypt as _bcrypt
             _hash_admin   = _bcrypt.hashpw(b"ADMIN123"[:72],    _bcrypt.gensalt(rounds=12)).decode()
@@ -190,3 +234,51 @@ async def cleanup_old_data(retention_days: int = 90):
     logger.info(
         f"Retention cleanup: sensor={deleted_sensor} ai={deleted_ai} notif={deleted_notif} rows deleted"
     )
+
+
+_THRESHOLDS_CACHE = {}
+
+async def get_thresholds():
+    global _THRESHOLDS_CACHE
+    if _THRESHOLDS_CACHE:
+        return _THRESHOLDS_CACHE
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT setting_key, setting_value FROM system_settings")
+                rows = await cur.fetchall()
+                if rows:
+                    _THRESHOLDS_CACHE = {r[0]: float(r[1]) for r in rows}
+                    return _THRESHOLDS_CACHE
+    except Exception as e:
+        logger.error(f"Error loading thresholds from DB: {e}")
+
+    # Fallback to config.settings if DB fails/is not initialized
+    from app.core.config import settings as cfg
+    return {
+        "temp_warning": cfg.AI_TEMP_WARNING,
+        "temp_danger": cfg.AI_TEMP_DANGER,
+        "hum_warning": cfg.AI_HUM_WARNING,
+        "hum_danger": cfg.AI_HUM_DANGER,
+    }
+
+async def update_thresholds(temp_warning: float, temp_danger: float, hum_warning: float, hum_danger: float):
+    global _THRESHOLDS_CACHE
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            for key, val in [
+                ("temp_warning", temp_warning),
+                ("temp_danger", temp_danger),
+                ("hum_warning", hum_warning),
+                ("hum_danger", hum_danger)
+            ]:
+                await cur.execute(
+                    "INSERT INTO system_settings (setting_key, setting_value) VALUES (%s, %s) "
+                    "ON DUPLICATE KEY UPDATE setting_value = %s",
+                    (key, str(val), str(val))
+                )
+    _THRESHOLDS_CACHE.clear()
+    logger.info(f"Thresholds updated in DB: temp_w={temp_warning}, temp_d={temp_danger}, hum_w={hum_warning}, hum_d={hum_danger}")

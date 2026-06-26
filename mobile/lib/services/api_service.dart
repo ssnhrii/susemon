@@ -111,6 +111,25 @@ class ApiService {
       _get('${ApiConfig.baseUrl}${ApiConfig.sensorLatest}',
           (d) => (d as List).map((e) => SensorReading.fromJson(e)).toList());
 
+  Future<Map<String, dynamic>> getThresholds() async {
+    return _get('${ApiConfig.baseUrl}/sensors/thresholds',
+        (d) => d as Map<String, dynamic>);
+  }
+
+  Future<void> updateThresholds(double tempWarning, double tempDanger) async {
+    final res = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/sensors/thresholds'),
+      headers: _headers,
+      body: jsonEncode({
+        'temp_warning': tempWarning,
+        'temp_danger': tempDanger,
+        'hum_warning': 80.0,
+        'hum_danger': 85.0,
+      }),
+    ).timeout(const Duration(seconds: 10));
+    _parse(res);
+  }
+
   Future<List<SensorReading>> getSensorHistory(
     String nodeId, {
     String period = '24h',
