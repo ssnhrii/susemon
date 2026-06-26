@@ -44,6 +44,5 @@
 
 ## Progress Timeline
 - **Minggu 8:** MQTT & UI Visual (75%)
-- **Minggu 10:** AI Integration & WebSocket (95%)
 - **Minggu 12:** Sensor & LoRa Validation (97%)
 - **Minggu 14:** Final Documentation & Closing (100%)
