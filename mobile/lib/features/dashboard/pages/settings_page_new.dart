@@ -542,6 +542,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
   Widget _buildIntervalRow() => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
+<<<<<<< Updated upstream
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,6 +563,13 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
           ],
         ),
       ),
+=======
+      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Interval Refresh', style: TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500)),
+        SizedBox(height: 2),
+        Text('Fallback polling (saat WS offline)', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ])),
+>>>>>>> Stashed changes
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
@@ -585,7 +593,11 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
             DropdownMenuItem(value: '10', child: Text('10 detik')),
             DropdownMenuItem(value: '30', child: Text('30 detik')),
           ],
-          onChanged: (v) => setState(() => _interval = v!),
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _interval = v);
+            context.read<SensorProvider>().setPollInterval(int.parse(v));
+          },
         ),
       ),
     ],

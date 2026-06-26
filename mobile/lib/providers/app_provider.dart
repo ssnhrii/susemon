@@ -33,7 +33,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get loggedIn   => _loggedIn;
+  bool get loggedIn    => _loggedIn;
   String? get userName => _userName;
   String get role      => _role;
   bool get isAdmin     => _role == 'admin';
@@ -101,24 +101,41 @@ class SensorProvider extends ChangeNotifier {
   final ApiService _api;
   final WebSocketService _ws;
 
-  List<SensorReading> _latest = [];
-  SensorStats _stats = SensorStats.empty();
-  bool _loading = false;
-  bool _wsConnected = false;
+  List<SensorReading> _latest  = [];
+  SensorStats _stats           = SensorStats.empty();
+  bool _loading                = false;
+  bool _wsConnected            = false;
   String? _error;
-  double _tempThreshold = 40.0;
+
+  // Thresholds — sinkron dengan backend system_settings
+  double _tempDanger  = 40.0;
+  double _tempWarning = 35.0;
+  double _humWarning  = 80.0;
+  double _humDanger   = 85.0;
+
+  // Polling interval (detik) — bisa diubah dari settings UI
+  int _pollIntervalSec = 5;
+
   Timer? _pollTimer;
   Timer? _statsTimer;
   StreamSubscription? _wsSub;
+  StreamSubscription? _aiSub;
+
+  // Callback ke NotificationProvider untuk WS AI alert
+  void Function(Map<String, dynamic>)? onAiAlert;
 
   SensorProvider(this._api, this._ws);
 
-  List<SensorReading> get latest      => _latest;
-  SensorStats get stats               => _stats;
-  bool get loading                    => _loading;
-  bool get wsConnected                => _wsConnected;
-  String? get error                   => _error;
-  double get tempThreshold            => _tempThreshold;
+  List<SensorReading> get latest  => _latest;
+  SensorStats get stats           => _stats;
+  bool get loading                => _loading;
+  bool get wsConnected            => _wsConnected;
+  String? get error               => _error;
+  double get tempThreshold        => _tempDanger;
+  double get tempWarning          => _tempWarning;
+  double get humWarning           => _humWarning;
+  double get humDanger            => _humDanger;
+  int get pollIntervalSec         => _pollIntervalSec;
 
   String get globalStatus {
     if (_latest.any((r) => r.status == 'BERBAHAYA')) return 'BERBAHAYA';
@@ -130,20 +147,41 @@ class SensorProvider extends ChangeNotifier {
   int get problemCount => _latest.where((r) => r.status != 'AMAN').length;
   int get nodeCount    => _latest.length;
 
+  /// Fetch thresholds dari backend dan simpan semua 4 nilai
   Future<void> fetchThresholds() async {
     try {
-      final data = await _api.getThresholds();
-      _tempThreshold = (data['temp_danger'] as num?)?.toDouble() ?? 40.0;
+      final data  = await _api.getThresholds();
+      _tempDanger  = (data['temp_danger']  as num?)?.toDouble() ?? 40.0;
+      _tempWarning = (data['temp_warning'] as num?)?.toDouble() ?? 35.0;
+      _humWarning  = (data['hum_warning']  as num?)?.toDouble() ?? 80.0;
+      _humDanger   = (data['hum_danger']   as num?)?.toDouble() ?? 85.0;
       notifyListeners();
     } catch (_) {}
   }
 
-  Future<void> updateTempThreshold(double val) async {
+  /// Update batas suhu kritis — kirim semua 4 nilai ke backend
+  Future<void> updateTempThreshold(double danger) async {
     try {
-      _tempThreshold = val;
+      _tempDanger  = danger;
+      _tempWarning = danger - 5.0;
       notifyListeners();
-      await _api.updateThresholds(val - 5.0, val);
+      await _api.updateThresholds(
+        _tempWarning, danger,
+        humWarning: _humWarning,
+        humDanger:  _humDanger,
+      );
     } catch (_) {}
+  }
+
+  /// Ubah interval fallback polling — restart timer secara efektif
+  void setPollInterval(int seconds) {
+    if (seconds == _pollIntervalSec) return;
+    _pollIntervalSec = seconds;
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(Duration(seconds: seconds), (_) {
+      if (!_wsConnected) _fetchLatest();
+    });
+    notifyListeners();
   }
 
   void start() {
@@ -152,6 +190,7 @@ class SensorProvider extends ChangeNotifier {
     fetchThresholds();
     _ws.connect();
 
+    // WS sensor updates
     _wsSub = _ws.stream.listen((readings) {
       if (readings.length > 1) {
         _latest = readings;
@@ -169,8 +208,13 @@ class SensorProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Fallback polling setiap 5 detik jika WS tidak tersedia
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // WS AI alerts — forward ke callback (NotificationProvider)
+    _aiSub = _ws.aiAlertStream.listen((alert) {
+      onAiAlert?.call(alert);
+    });
+
+    // Fallback polling jika WS tidak tersedia
+    _pollTimer = Timer.periodic(Duration(seconds: _pollIntervalSec), (_) {
       if (!_wsConnected) _fetchLatest();
     });
 
@@ -207,22 +251,20 @@ class SensorProvider extends ChangeNotifier {
     String nodeId, {
     String period = '24h',
     int limit = 100,
-  }) async {
-    return _api.getSensorHistory(nodeId, period: period, limit: limit);
-  }
+  }) =>
+      _api.getSensorHistory(nodeId, period: period, limit: limit);
 
-  Future<SensorStats> getNodeStats(String nodeId, {String period = '24h'}) async {
-    return _api.getStatistics(period: period, nodeId: nodeId);
-  }
+  Future<SensorStats> getNodeStats(String nodeId, {String period = '24h'}) =>
+      _api.getStatistics(period: period, nodeId: nodeId);
 
-  String getExportUrl(String nodeId, {String period = '24h'}) {
-    return _api.getExportUrl(nodeId, period: period);
-  }
+  String getExportUrl(String nodeId, {String period = '24h'}) =>
+      _api.getExportUrl(nodeId, period: period);
 
   void stop() {
     _pollTimer?.cancel();
     _statsTimer?.cancel();
     _wsSub?.cancel();
+    _aiSub?.cancel();
     _ws.disconnect();
   }
 
@@ -240,7 +282,7 @@ class NotificationProvider extends ChangeNotifier {
 
   List<AppNotification> _notifications = [];
   int _unreadCount = 0;
-  final bool _loading = false;
+  bool _loading    = false;
   Timer? _pollTimer;
 
   NotificationProvider(this._api);
@@ -262,9 +304,39 @@ class NotificationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dipanggil oleh SensorProvider.onAiAlert ketika WS AI alert masuk
+  void addAiAlert(Map<String, dynamic> alert) {
+    final nodeId    = alert['node_id'] as String? ?? '';
+    final riskLevel = alert['risk_level'] as String? ?? 'MEDIUM';
+    final insights  = (alert['insights'] as List?)?.cast<String>() ?? [];
+    final type      = riskLevel == 'HIGH' ? 'critical' : 'warning';
+
+    final notif = AppNotification(
+      id:        -DateTime.now().millisecondsSinceEpoch, // ID sementara negatif
+      nodeId:    nodeId,
+      title:     'AI Alert - Node $nodeId',
+      message:   insights.isNotEmpty ? insights.first : 'Anomali terdeteksi ($riskLevel)',
+      type:      type,
+      isRead:    false,
+      createdAt: DateTime.now().toUtc(),
+    );
+
+    // Hindari duplikat — cek jika sudah ada alert dari node yang sama dalam 1 menit
+    final cutoff = DateTime.now().toUtc().subtract(const Duration(minutes: 1));
+    final hasDuplicate = _notifications.any(
+      (n) => n.nodeId == nodeId && !n.isRead && n.createdAt.isAfter(cutoff),
+    );
+
+    if (!hasDuplicate) {
+      _notifications.insert(0, notif);
+      _unreadCount++;
+      notifyListeners();
+    }
+  }
+
   Future<void> markRead(int id) async {
     try {
-      await _api.markAsRead(id);
+      if (id > 0) await _api.markAsRead(id);
       final idx = _notifications.indexWhere((n) => n.id == id);
       if (idx != -1) {
         _notifications[idx] = _notifications[idx].copyWith(isRead: true);
@@ -278,7 +350,7 @@ class NotificationProvider extends ChangeNotifier {
     try {
       await _api.markAllAsRead();
       _notifications = _notifications.map((n) => n.copyWith(isRead: true)).toList();
-      _unreadCount = 0;
+      _unreadCount   = 0;
       notifyListeners();
     } catch (_) {}
   }
@@ -307,10 +379,10 @@ class AiProvider extends ChangeNotifier {
 
   AiProvider(this._api);
 
-  List<AiAnalysis> get analysis              => _analysis;
-  Map<String, AiPrediction> get predictions  => _predictions;
-  Map<String, dynamic>? get summary          => _summary;
-  bool get loading                           => _loading;
+  List<AiAnalysis> get analysis             => _analysis;
+  Map<String, AiPrediction> get predictions => _predictions;
+  Map<String, dynamic>? get summary         => _summary;
+  bool get loading                          => _loading;
 
   void start() {
     fetchAnalysis();

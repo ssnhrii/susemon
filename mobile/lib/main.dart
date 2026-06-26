@@ -28,12 +28,17 @@ class SusemonApp extends StatelessWidget {
     final api = ApiService();
     final ws = WebSocketService();
 
+    final notifProvider  = NotificationProvider(api);
+    final sensorProvider = SensorProvider(api, ws);
+    // Wire WS AI alerts dari SensorProvider → NotificationProvider
+    sensorProvider.onAiAlert = notifProvider.addAiAlert;
+
     return MultiProvider(
       providers: [
         Provider<ApiService>(create: (_) => api),
         ChangeNotifierProvider(create: (_) => AuthProvider(api)),
-        ChangeNotifierProvider(create: (_) => SensorProvider(api, ws)),
-        ChangeNotifierProvider(create: (_) => NotificationProvider(api)),
+        ChangeNotifierProvider(create: (_) => sensorProvider),
+        ChangeNotifierProvider(create: (_) => notifProvider),
         ChangeNotifierProvider(create: (_) => AiProvider(api)),
       ],
       child: MaterialApp(

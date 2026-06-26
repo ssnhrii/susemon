@@ -1,6 +1,14 @@
+"""
+Pydantic schemas — request/response models
+Sinkron dengan DB schema dan Flutter sensor_model.dart / user_model.dart
+"""
+import re
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 from typing import Optional, List, Any
+
+# Regex dikompilasi sekali
+_RE_NODE_ID = re.compile(r'^[A-Za-z0-9_\-]{1,20}$')
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -40,10 +48,12 @@ class SensorDataIn(BaseModel):
     @field_validator('node_id')
     @classmethod
     def validate_node_id(cls, v):
-        import re
-        if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', v):
-            raise ValueError('node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)')
+        if not _RE_NODE_ID.match(v):
+            raise ValueError(
+                'node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)'
+            )
         return v
+
 
 class SensorReading(BaseModel):
     id: int
@@ -55,6 +65,7 @@ class SensorReading(BaseModel):
     node_name: Optional[str] = None
     location: Optional[str] = None
 
+
 class SensorNode(BaseModel):
     id: int
     node_id: str
@@ -65,6 +76,7 @@ class SensorNode(BaseModel):
     current_humidity: Optional[float] = None
     current_status: Optional[str] = None
 
+
 class SensorNodeCreate(BaseModel):
     node_id: str
     node_name: str
@@ -74,10 +86,12 @@ class SensorNodeCreate(BaseModel):
     @field_validator('node_id')
     @classmethod
     def validate_node_id(cls, v):
-        import re
-        if not re.match(r'^[A-Za-z0-9_\-]{1,20}$', v):
-            raise ValueError('node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)')
+        if not _RE_NODE_ID.match(v):
+            raise ValueError(
+                'node_id hanya boleh alfanumerik, dash, underscore (max 20 karakter)'
+            )
         return v
+
 
 class SensorNodeUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -123,6 +137,7 @@ class AiAnalysisResult(BaseModel):
     insights: List[str] = []
     signal_count: int = 0
     status: Optional[str] = None
+
 
 class AiSummary(BaseModel):
     global_status: str

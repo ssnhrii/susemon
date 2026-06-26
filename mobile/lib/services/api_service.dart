@@ -116,15 +116,18 @@ class ApiService {
         (d) => d as Map<String, dynamic>);
   }
 
-  Future<void> updateThresholds(double tempWarning, double tempDanger) async {
+  Future<void> updateThresholds(double tempWarning, double tempDanger, {
+    double humWarning = 80.0,
+    double humDanger = 85.0,
+  }) async {
     final res = await http.put(
       Uri.parse('${ApiConfig.baseUrl}/sensors/thresholds'),
       headers: _headers,
       body: jsonEncode({
         'temp_warning': tempWarning,
         'temp_danger': tempDanger,
-        'hum_warning': 80.0,
-        'hum_danger': 85.0,
+        'hum_warning': humWarning,
+        'hum_danger': humDanger,
       }),
     ).timeout(const Duration(seconds: 10));
     _parse(res);
