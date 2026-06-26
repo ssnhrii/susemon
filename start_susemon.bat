@@ -12,7 +12,7 @@ echo.
 set PROJECT_DIR=C:\laragon\www\susemon
 set BACKEND_DIR=%PROJECT_DIR%\backend
 set MOBILE_DIR=%PROJECT_DIR%\mobile
-set PYTHON_EXE=C:\laragon\bin\python\python-3.10\python.exe
+set PYTHON_EXE=C:\laragon\bin\python\python-3.13\python.exe
 set MOSQUITTO_EXE=C:\Program Files\mosquitto\mosquitto.exe
 set MOSQUITTO_PASSWD=C:\Program Files\mosquitto\mosquitto_passwd.exe
 set MQTT_PASSWD_FILE=%BACKEND_DIR%\mosquitto_config\passwd
