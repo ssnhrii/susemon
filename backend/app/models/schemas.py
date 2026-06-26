@@ -21,6 +21,7 @@ class SensorDataIn(BaseModel):
     node_id: str
     temperature: float
     humidity: float
+    rssi: Optional[int] = None
 
     @field_validator('temperature')
     @classmethod

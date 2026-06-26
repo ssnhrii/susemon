@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
@@ -20,6 +20,18 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
   bool _pushNotif = true;
   bool _soundAlert = false;
   String _interval = '30';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _threshold = context.read<SensorProvider>().tempThreshold;
+        });
+      }
+    });
+  }
 
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
@@ -57,8 +69,10 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       ),
     );
     if (confirm == true && mounted) {
-      context.read<AuthProvider>().logout();
       context.read<SensorProvider>().stop();
+      context.read<NotificationProvider>().stop();
+      context.read<AiProvider>().stop();
+      context.read<AuthProvider>().logout();
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -161,7 +175,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
                         'Tentang Aplikasi',
                         Icons.info_outline_rounded,
                         [
-                          _infoRow('Versi', '2.1.0'),
+                          _infoRow('Versi', '2.2.0'),
                           _infoRow('ID Proyek', 'PBL-TRPL412'),
                           _infoRow('Institusi', 'Politeknik Negeri Batam'),
                           _infoRow('Teknologi', 'Flutter + LoRa + AI'),
@@ -473,6 +487,16 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
           max: 50,
           divisions: 20,
           onChanged: (v) => setState(() => _threshold = v),
+          onChangeEnd: (v) {
+            context.read<SensorProvider>().updateTempThreshold(v);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Batas suhu kritis diperbarui ke ${v.toStringAsFixed(0)}°C'),
+                backgroundColor: AppColors.success,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
         ),
       ),
       Text(

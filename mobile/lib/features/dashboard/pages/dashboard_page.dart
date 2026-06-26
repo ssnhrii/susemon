@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +16,7 @@ class DashboardPage extends StatelessWidget {
     final sensor = context.watch<SensorProvider>();
     final status = sensor.globalStatus;
     final sc = AppColors.statusColor(status);
+    final isOffline = sensor.error != null;
 
     return Scaffold(
       backgroundColor: AppColors.bgLight,
@@ -27,6 +28,54 @@ class DashboardPage extends StatelessWidget {
                 wsConnected: sensor.wsConnected,
                 nodeCount: sensor.nodeCount,
               ),
+              if (isOffline)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.15),
+                    border: const Border(
+                      bottom: BorderSide(color: AppColors.danger, width: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cloud_off_rounded,
+                          color: AppColors.danger, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Koneksi ke backend terputus. Menampilkan data terakhir.',
+                          style: TextStyle(
+                              color: AppColors.danger,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          sensor.refresh();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Coba Lagi',
+                            style: TextStyle(
+                                color: AppColors.danger,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {

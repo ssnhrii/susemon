@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -45,8 +45,9 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
         _fetch();
       } else {
         sensor.refresh().then((_) {
+          if (!mounted) return;
           final freshIds = sensor.latest.map((r) => r.nodeId).toList();
-          if (freshIds.isNotEmpty && mounted) {
+          if (freshIds.isNotEmpty) {
             setState(() {
               _nodes = freshIds;
               _nodeId = freshIds.first;

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
@@ -20,12 +20,13 @@ class _AnalisisPageState extends State<AnalisisPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ai = context.read<AiProvider>();
       final sensor = context.read<SensorProvider>();
-      ai.fetchAnalysis();
       final nodeIds = sensor.latest.map((r) => r.nodeId).toSet();
-      for (final nodeId in nodeIds) {
-        ai.fetchPrediction(nodeId);
-      }
-      if (nodeIds.isEmpty) {
+      if (nodeIds.isNotEmpty) {
+        ai.fetchAnalysis();
+        for (final nodeId in nodeIds) {
+          ai.fetchPrediction(nodeId);
+        }
+      } else {
         ai.fetchAnalysis().then((_) {
           if (!context.mounted) return;
           for (final a in ai.analysis) {
@@ -99,7 +100,7 @@ class _AnalisisPageState extends State<AnalisisPage> {
     );
   }
 
-  Widget _buildHeader(bool wsConnected) => Container(
+  Widget _buildHeader() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     decoration: BoxDecoration(
       color: Colors.white.withValues(alpha: 0.7),
@@ -127,7 +128,7 @@ class _AnalisisPageState extends State<AnalisisPage> {
               ),
             ),
             Text(
-              'Moving Average · Z-score · Isolation Forest',
+              'EWMA · Z-score · Trend · Isolation Forest',
               style: TextStyle(
                 fontSize: 10,
                 color: AppColors.onSurfaceVariant.withValues(alpha: 0.6),
@@ -139,16 +140,18 @@ class _AnalisisPageState extends State<AnalisisPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.08),
+            color: AppColors.warning.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: AppColors.warning.withValues(alpha: 0.3),
+            ),
           ),
           child: const Text(
-            'Enterprise',
+            'Prediktif',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: AppColors.primary,
+              color: AppColors.warning,
             ),
           ),
         ),
@@ -373,80 +376,176 @@ class _AiCard extends StatelessWidget {
       radius: 14,
       borderColor: _color.withValues(alpha: 0.2),
     ),
-    child: Row(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: _color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(_icon, color: _color, size: 24),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        // ── Baris 1: Node + Status + Confidence ──
+        Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(_icon, color: _color, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      analysis.nodeId,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          analysis.nodeId,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _color,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(height: 3),
                   Text(
-                    _title,
+                    'Suhu: ${analysis.currentTemp.toStringAsFixed(1)}°C  ·  Hum: ${analysis.currentHumidity.toStringAsFixed(0)}%  ·  avg ${analysis.avgTemp}°C',
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: _color,
+                      fontSize: 11,
+                      color: AppColors.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Suhu: ${analysis.currentTemp.toStringAsFixed(1)}°C  ·  Rata-rata: ${analysis.avgTemp}°C',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.onSurfaceVariant.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          children: [
-            Text(
-              '${analysis.confidence}%',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: _color,
-              ),
             ),
-            Text(
-              'confidence',
-              style: TextStyle(fontSize: 9, color: AppColors.textDim),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${analysis.confidence}%',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: _color,
+                  ),
+                ),
+                Text(
+                  'confidence',
+                  style: TextStyle(fontSize: 9, color: AppColors.textDim),
+                ),
+              ],
             ),
           ],
+        ),
+
+        // ── Baris 2: Metrik AI ──
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _metric(
+              'Tren',
+              '${analysis.trendPerHour >= 0 ? '+' : ''}${analysis.trendPerHour.toStringAsFixed(1)}°C/h',
+              analysis.trendPerHour.abs() > 3 ? AppColors.warning : AppColors.textDim,
+            ),
+            const SizedBox(width: 12),
+            _metric(
+              'Z-score',
+              analysis.zScoreTemp.toStringAsFixed(2),
+              analysis.zScoreTemp.abs() > 2.5 ? AppColors.warning : AppColors.textDim,
+            ),
+            const SizedBox(width: 12),
+            _metric(
+              'Sinyal',
+              '${analysis.signalCount}/6',
+              analysis.signalCount >= 2 ? AppColors.warning : AppColors.textDim,
+            ),
+            const SizedBox(width: 12),
+            _metric(
+              'Tren arah',
+              analysis.trendDirection == 'increasing'
+                  ? '↑ naik'
+                  : analysis.trendDirection == 'decreasing'
+                      ? '↓ turun'
+                      : '→ stabil',
+              AppColors.textDim,
+            ),
+          ],
+        ),
+
+        // ── Baris 3: Insights ──
+        if (analysis.insights.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _color.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: analysis.insights.take(3).map((insight) => Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 11, color: _color),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        insight,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _color.withValues(alpha: 0.9),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )).toList(),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+
+  Widget _metric(String label, String value, Color color) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 9, color: AppColors.textDim),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
         ),
       ],
     ),
@@ -501,66 +600,82 @@ class _PredictionCard extends StatelessWidget {
               : AppColors.success;
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    p.nodeId,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Prediksi: ${p.predictedTemp.toStringAsFixed(1)}°C',
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        p.nodeId,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.onSurface,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
                         ),
                       ),
-                      Text(
-                        'Z-score: ${p.zScore.toStringAsFixed(2)}  ·  Tren: ${p.trend}',
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Prediksi: ${p.predictedTemp.toStringAsFixed(1)}°C',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.onSurface,
+                            ),
+                          ),
+                          Text(
+                            'Z-score: ${p.zScore.toStringAsFixed(2)}  ·  Tren: ${p.trend}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textDim,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: rc.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        p.riskLevel,
                         style: TextStyle(
                           fontSize: 10,
-                          color: AppColors.textDim,
+                          fontWeight: FontWeight.w700,
+                          color: rc,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: rc.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    p.riskLevel,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: rc,
+                if (p.insights.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, left: 2),
+                    child: Text(
+                      '• ${p.insights.first}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: rc.withValues(alpha: 0.8),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           );
@@ -578,10 +693,14 @@ class _GatewayCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = wsConnected ? AppColors.success : AppColors.warning;
+    final statusLabel = wsConnected ? 'Terhubung' : 'Polling';
     final params = [
+      ['Gateway', 'Dragino LG02'],
       ['Frekuensi', '923.5 MHz'],
       ['Spreading Factor', 'SF7'],
       ['Bandwidth', '125 kHz'],
+      ['Sync Word', '0x12 (18)'],
       ['Tx Power', '20 dBm'],
       ['Koneksi', wsConnected ? 'WebSocket' : 'HTTP Polling'],
     ];
@@ -596,12 +715,12 @@ class _GatewayCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.router_rounded,
-                  color: AppColors.success,
+                  color: statusColor,
                   size: 16,
                 ),
               ),
@@ -621,10 +740,10 @@ class _GatewayCard extends StatelessWidget {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.08),
+                  color: statusColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(99),
                   border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.25),
+                    color: statusColor.withValues(alpha: 0.25),
                   ),
                 ),
                 child: Row(
@@ -633,18 +752,18 @@ class _GatewayCard extends StatelessWidget {
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.success,
+                      decoration: BoxDecoration(
+                        color: statusColor,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
-                      'Terhubung',
+                    Text(
+                      statusLabel,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.success,
+                        color: statusColor,
                       ),
                     ),
                   ],

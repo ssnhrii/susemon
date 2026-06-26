@@ -4,9 +4,9 @@ Sensors Router — CRUD data sensor + export CSV
 import re
 import io
 import csv
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from fastapi.responses import StreamingResponse
-from app.core.database import get_pool
+from app.core.database import get_pool, get_thresholds, update_thresholds
 from app.core.security import get_current_user, verify_gateway_key, require_admin, require_pic_or_admin
 from app.models.schemas import SensorDataIn, SensorNodeCreate, SensorNodeUpdate
 
@@ -69,14 +69,57 @@ async def get_sensor_data(
         raise HTTPException(status_code=400, detail="node_id tidak valid")
     time_filter = _TIME_FILTERS.get(period, _TIME_FILTERS["24h"])
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                f"SELECT * FROM sensor_data WHERE node_id=%s {time_filter} ORDER BY timestamp DESC LIMIT %s",
-                (node_id, limit)
-            )
-            rows = await cur.fetchall()
-            cols = [d[0] for d in cur.description]
+    
+    if period in ("6h", "24h", "7d", "30d"):
+        # Konfigurasi downsampling berdasarkan period
+        if period == "6h":
+            interval_seconds = 60
+            required_points = 360  # 6 jam * 60 menit = 360 data points
+        elif period == "24h":
+            interval_seconds = 300
+            required_points = 288  # 24 jam / 5 menit = 288 data points
+        elif period == "7d":
+            interval_seconds = 3600
+            required_points = 168  # 7 hari * 24 jam = 168 data points
+        else: # 30d
+            interval_seconds = 3600
+            required_points = 720  # 30 hari * 24 jam = 720 data points
+
+        query_limit = max(limit, required_points)
+        sql = f"""
+            SELECT 
+              MIN(id) AS id,
+              node_id,
+              ROUND(AVG(temperature), 2) AS temperature,
+              ROUND(AVG(humidity), 2) AS humidity,
+              CASE 
+                WHEN SUM(CASE WHEN status='BERBAHAYA' THEN 1 ELSE 0 END) > 0 THEN 'BERBAHAYA'
+                WHEN SUM(CASE WHEN status='WASPADA' THEN 1 ELSE 0 END) > 0 THEN 'WASPADA'
+                ELSE 'AMAN'
+              END AS status,
+              ROUND(AVG(rssi), 0) AS rssi,
+              DATE_FORMAT(FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(timestamp) / {interval_seconds}) * {interval_seconds}), '%%Y-%%m-%%d %%H:%%i:%%S') AS timestamp
+            FROM sensor_data
+            WHERE node_id=%s {time_filter}
+            GROUP BY FLOOR(UNIX_TIMESTAMP(timestamp) / {interval_seconds}), node_id
+            ORDER BY timestamp DESC
+            LIMIT %s
+        """
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (node_id, query_limit))
+                rows = await cur.fetchall()
+                cols = [d[0] for d in cur.description]
+    else:
+        # Raw data untuk 1h (limit default 360 untuk cover 1 jam data 10-detik)
+        query_limit = max(limit, 360)
+        sql = f"SELECT * FROM sensor_data WHERE node_id=%s {time_filter} ORDER BY timestamp DESC LIMIT %s"
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (node_id, query_limit))
+                rows = await cur.fetchall()
+                cols = [d[0] for d in cur.description]
+                
     data = [dict(zip(cols, r)) for r in rows]
     data.reverse()
     return {"success": True, "data": data, "count": len(data)}
@@ -173,10 +216,16 @@ async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
-                (body.node_id, body.temperature, body.humidity, status)
-            )
+            if body.rssi is not None:
+                await cur.execute(
+                    "INSERT INTO sensor_data (node_id, temperature, humidity, status, rssi) VALUES (%s,%s,%s,%s,%s)",
+                    (body.node_id, body.temperature, body.humidity, status, body.rssi)
+                )
+            else:
+                await cur.execute(
+                    "INSERT INTO sensor_data (node_id, temperature, humidity, status) VALUES (%s,%s,%s,%s)",
+                    (body.node_id, body.temperature, body.humidity, status)
+                )
             if status == "BERBAHAYA":
                 await cur.execute(
                     "INSERT INTO notifications (node_id, title, message, type) VALUES (%s,%s,%s,'critical')",
@@ -187,7 +236,65 @@ async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     return {
         "success": True, "message": "Data berhasil disimpan",
         "data": {"node_id": body.node_id, "temperature": body.temperature,
-                 "humidity": body.humidity, "status": status}
+                 "humidity": body.humidity, "status": status, "rssi": body.rssi}
+    }
+
+
+@router.get("/node-status/{node_id}")
+async def get_node_status_for_device(node_id: str, _=Depends(verify_gateway_key)):
+    """
+    Endpoint khusus untuk node sensor polling status AI — dilindungi API Key.
+    Tidak butuh JWT. Dipakai oleh firmware node via HTTP.
+    """
+    if not _VALID_NODE_ID.match(node_id):
+        raise HTTPException(status_code=400, detail="node_id tidak valid")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # Ambil data terbaru dari sensor_data
+            await cur.execute(
+                "SELECT status, temperature, humidity, timestamp "
+                "FROM sensor_data WHERE node_id=%s ORDER BY timestamp DESC LIMIT 1",
+                (node_id,)
+            )
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Belum ada data untuk node ini")
+
+    # Ambil AI prediction terbaru jika ada
+    from app.services.ai_engine import analyze_node
+    thresholds = await get_thresholds()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT temperature, humidity, timestamp FROM sensor_data "
+                "WHERE node_id=%s ORDER BY timestamp DESC LIMIT 20",
+                (node_id,)
+            )
+            readings = [{"temperature": r[0], "humidity": r[1], "timestamp": r[2]}
+                        for r in await cur.fetchall()]
+    readings.reverse()
+
+    risk_level = "LOW"
+    confidence = 0
+    if len(readings) >= 3:
+        ai = analyze_node(readings, thresholds)
+        risk_level = ai.get("risk_level", "LOW")
+        confidence = ai.get("confidence", 0)
+
+    return {
+        "success": True,
+        "data": {
+            "node_id":    node_id,
+            "status":     row[0],
+            "temperature": float(row[1]),
+            "humidity":    float(row[2]),
+            "risk_level":  risk_level,
+            "confidence":  confidence,
+            "timestamp":   str(row[3]),
+        }
     }
 
 
@@ -269,3 +376,24 @@ async def delete_node(node_id: str, user=Depends(require_pic_or_admin)):
             if cur.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Perangkat tidak ditemukan")
     return {"success": True, "message": "Perangkat berhasil dihapus"}
+
+
+@router.get("/thresholds")
+async def get_thresholds_endpoint(user=Depends(get_current_user)):
+    thresholds = await get_thresholds()
+    return {"success": True, "data": thresholds}
+
+
+@router.put("/thresholds")
+async def update_thresholds_endpoint(
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    current = await get_thresholds()
+    temp_warning = float(body.get("temp_warning", current.get("temp_warning", 35.0)))
+    temp_danger = float(body.get("temp_danger", current.get("temp_danger", 40.0)))
+    hum_warning = float(body.get("hum_warning", current.get("hum_warning", 80.0)))
+    hum_danger = float(body.get("hum_danger", current.get("hum_danger", 85.0)))
+    
+    await update_thresholds(temp_warning, temp_danger, hum_warning, hum_danger)
+    return {"success": True, "message": "Thresholds updated successfully"}

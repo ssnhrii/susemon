@@ -15,8 +15,8 @@
 Node Sensor (TTGO LoRa32 + DHT22)
         │  LoRa
         ▼
-Gateway (TTGO LoRa32)
-        │  MQTT over WiFi
+Gateway (Dragino LG02)
+        │  MQTT over WiFi/LAN
         ▼
 Server Monitoring (FastAPI + MySQL + AI)
         │  REST API
@@ -29,7 +29,7 @@ Tiga komponen utama sesuai desain produk:
 | Komponen | Hardware | Fungsi |
 |---|---|---|
 | Node Sensor | TTGO LoRa32 + DHT22 + OLED | Baca suhu & kelembapan, kirim via LoRa |
-| Gateway LoRa | TTGO LoRa32 + OLED | Terima data LoRa, teruskan ke server via MQTT/WiFi |
+| Gateway LoRa | Dragino LG02 | Terima data LoRa, teruskan ke server via MQTT |
 | Server Monitoring | Laptop + FastAPI + MySQL | Preprocessing, AI anomaly detection, API, dashboard |
 
 ---
@@ -55,7 +55,7 @@ Penentuan status berdasarkan analisis kombinasi suhu dan kelembapan menggunakan 
 | AI | scikit-learn (Isolation Forest + threshold) |
 | Frontend | Flutter · Riverpod · fl_chart |
 | Hardware Node | TTGO LoRa32 · DHT22 · OLED Display · Arduino IDE |
-| Hardware Gateway | TTGO LoRa32 · OLED Display · Router WiFi |
+| Hardware Gateway | Dragino LG02 (client ID: dragino-1d0f98) |
 | Protokol IoT | LoRa (node → gateway) · MQTT topic `sensor/data` (gateway → server) |
 
 ---
@@ -267,9 +267,9 @@ CREATE TABLE sensor_data (
 | Komponen | Jumlah | Fungsi |
 |---|---|---|
 | TTGO LoRa32 (Node) | 1 | Node sensor — baca DHT22, kirim via LoRa |
-| TTGO LoRa32 (Gateway) | 1 | Gateway — terima LoRa, kirim MQTT via WiFi |
+| Dragino LG02 (Gateway) | 1 | Gateway — terima LoRa (Raw), kirim MQTT ke server |
 | Sensor DHT22 | 1 | Membaca suhu dan kelembapan |
-| OLED Display | 2 | Tampilkan data real-time di node & gateway |
+| OLED Display | 1 | Tampilkan data real-time di node sensor |
 | Antena LoRa | 1 | Komunikasi jarak jauh antar perangkat |
 | Buzzer | 1 | Notifikasi suara saat kondisi waspada/bahaya |
 | LED (Merah, Kuning, Hijau) | 1 set | Indikator kondisi visual |

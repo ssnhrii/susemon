@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.core.database import init_db, close_pool, get_pool, cleanup_old_data
+from app.core.database import init_db, close_pool, get_pool, cleanup_old_data, get_thresholds
 from app.routers import auth, sensors, notifications, ai as ai_router, users as users_router
 from app.services.ai_engine import analyze_node
 from app.services.mqtt_listener import start_mqtt_listener, set_ws_manager
@@ -116,7 +116,8 @@ async def broadcast_sensor_data():
             async with pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute("""
-                        SELECT sd.*, sn.node_name, sn.location
+                        SELECT sd.node_id, sd.temperature, sd.humidity, sd.status,
+                               sd.rssi, sd.timestamp, sn.node_name, sn.location
                         FROM sensor_data sd
                         INNER JOIN sensor_nodes sn ON sd.node_id = sn.node_id
                         WHERE sd.timestamp = (
@@ -127,10 +128,12 @@ async def broadcast_sensor_data():
                     rows = await cur.fetchall()
                     cols = [d[0] for d in cur.description]
             data = [dict(zip(cols, r)) for r in rows]
+            # timestamp broadcast = timestamp data terbaru (bukan now())
+            latest_ts = max((r["timestamp"] for r in data), default=None) if data else None
             await manager.broadcast({
                 "type": "sensor_update",
                 "data": data,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": str(latest_ts) if latest_ts else datetime.now(timezone.utc).isoformat()
             })
         except Exception as e:
             logger.error(f"Broadcast error: {e}")
@@ -172,7 +175,8 @@ async def auto_ai_scan():
                     if len(readings) < 3:
                         continue
 
-                    result = analyze_node(readings, THRESHOLDS)
+                    thresholds = await get_thresholds()
+                    result = analyze_node(readings, thresholds)
                     if result["anomaly_detected"]:
                         anomaly_count += 1
                         async with pool.acquire() as conn:
@@ -209,7 +213,7 @@ async def auto_ai_scan():
         except Exception as e:
             logger.error(f"Auto AI scan error: {e}")
 
-        await asyncio.sleep(5 * 60)
+        await asyncio.sleep(2 * 60)
 
 
 async def daily_cleanup():

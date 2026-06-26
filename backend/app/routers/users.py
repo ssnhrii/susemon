@@ -160,7 +160,7 @@ async def delete_user(user_id: int, user=Depends(require_admin)):
 
 
 @router.get("/me")
-async def get_me(user=Depends(get_current_user)):
+async def get_me(user: dict = Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:

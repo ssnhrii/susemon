@@ -20,12 +20,24 @@ set MQTT_USER=susemon
 set MQTT_PASS=Susemon2026mqtt
 
 :: ── Auto-detect IP Laptop ────────────────────────────────────────────────────
+set DETECT_PYTHON=%PYTHON_EXE%
+if exist "%BACKEND_DIR%\venv\Scripts\python.exe" (
+    set DETECT_PYTHON=%BACKEND_DIR%\venv\Scripts\python.exe
+)
+
+set LOCAL_IP=127.0.0.1
+for /f "delims=" %%i in ('%DETECT_PYTHON% -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2^>nul') do (
+    set LOCAL_IP=%%i
+)
+
+if not "%LOCAL_IP%"=="127.0.0.1" goto :IP_OK
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
     set LOCAL_IP=%%a
     goto :IP_FOUND
 )
 :IP_FOUND
 set LOCAL_IP=%LOCAL_IP: =%
+:IP_OK
 
 :: ── 1. Kill proses lama ──────────────────────────────────────────────────────
 echo [INIT] Membersihkan proses lama...
@@ -40,7 +52,7 @@ if not exist "%MOSQUITTO_EXE%" (
     echo [MQTT] Mosquitto tidak ditemukan.
     echo [MQTT] Download: https://mosquitto.org/download/
     echo [MQTT] Lanjut tanpa MQTT - hardware tidak akan terhubung.
-    echo.
+    echo(
     goto :SKIP_MQTT
 )
 
@@ -54,7 +66,7 @@ if not exist "%BACKEND_DIR%\mosquitto_config" (
 :: Buat password file jika belum ada
 if not exist "%MQTT_PASSWD_FILE%" (
     echo [MQTT] Membuat password file...
-    "%MOSQUITTO_PASSWD%" -b "%MQTT_PASSWD_FILE%" %MQTT_USER% %MQTT_PASS% >NUL 2>&1
+    "%MOSQUITTO_PASSWD%" -c -b "%MQTT_PASSWD_FILE%" %MQTT_USER% %MQTT_PASS% >NUL 2>&1
     if exist "%MQTT_PASSWD_FILE%" (
         echo [MQTT] Password file berhasil dibuat.
     ) else (
@@ -66,10 +78,25 @@ if not exist "%MQTT_PASSWD_FILE%" (
 
 :: Jalankan Mosquitto
 echo [MQTT] Menjalankan Mosquitto di port 1883...
-start "SUSEMON - MQTT Broker" "%MOSQUITTO_EXE%" -c "%BACKEND_DIR%\mosquitto.conf" -v
+start "SUSEMON - MQTT Broker" /D "%BACKEND_DIR%" "%MOSQUITTO_EXE%" -c mosquitto.conf -v
 timeout /t 3 /nobreak >NUL
 echo [MQTT] Mosquitto started.
 echo.
+
+:: ── Setup Firewall Rule ──────────────────────────────────────────────────────
+netsh advfirewall firewall show rule name="Mosquitto MQTT" >nul 2>&1
+if errorlevel 1 (
+    echo [MQTT] Memeriksa Windows Firewall untuk port 1883...
+    netsh advfirewall firewall add rule name="Mosquitto MQTT" dir=in action=allow protocol=TCP localport=1883 >nul 2>&1
+    if errorlevel 1 (
+        echo [MQTT] [PERINGATAN] Gagal membuka port 1883 otomatis [Butuh Run as Administrator].
+        echo        Jika Dragino tidak bisa connect, silakan buka port 1883 manual di Firewall,
+        echo        atau jalankan kembali file start_susemon.bat sebagai Administrator.
+    ) else (
+        echo [MQTT] Sukses membuka port 1883 di Windows Firewall!
+    )
+    echo(
+)
 
 :SKIP_MQTT
 
@@ -115,7 +142,7 @@ echo   Login Flutter (dari laptop):
 echo     IP Address  : 127.0.0.1
 echo     Access Code : ADMIN123
 echo.
-echo   Konfigurasi Gateway Arduino:
+echo   Konfigurasi Gateway Arduino / Dragino:
 echo     MQTT Server : %LOCAL_IP%
 echo     MQTT Port   : 1883
 echo     MQTT User   : %MQTT_USER%

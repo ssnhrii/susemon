@@ -33,6 +33,7 @@ class Settings:
     MQTT_BROKER: str     = os.getenv("MQTT_BROKER", "localhost")
     MQTT_PORT: int       = int(os.getenv("MQTT_PORT", 1883))
     MQTT_TOPIC: str      = os.getenv("MQTT_TOPIC", "sensor/data")
+    MQTT_DOWNLINK_TOPIC: str = os.getenv("MQTT_DOWNLINK_TOPIC", "sensor/ai_result")
     MQTT_CLIENT_ID: str  = os.getenv("MQTT_CLIENT_ID", "susemon-fastapi")
     MQTT_USER: str       = os.getenv("MQTT_USER", "")
     MQTT_PASS: str       = os.getenv("MQTT_PASS", "")

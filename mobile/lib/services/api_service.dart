@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'api_config.dart';
 import '../models/sensor_model.dart';
@@ -11,6 +12,9 @@ class ApiService {
   void setToken(String t) => _token = t;
   void clearToken() => _token = null;
   bool get isAuthenticated => _token != null;
+
+  /// Callback dipanggil saat 401 — untuk trigger logout dari provider
+  VoidCallback? onUnauthorized;
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -27,6 +31,7 @@ class ApiService {
     }
     if (res.statusCode == 401) {
       clearToken();
+      onUnauthorized?.call();
       throw Exception('Sesi habis, silakan login kembali');
     }
     if (res.statusCode == 403) {
@@ -105,6 +110,25 @@ class ApiService {
   Future<List<SensorReading>> getLatest() async =>
       _get('${ApiConfig.baseUrl}${ApiConfig.sensorLatest}',
           (d) => (d as List).map((e) => SensorReading.fromJson(e)).toList());
+
+  Future<Map<String, dynamic>> getThresholds() async {
+    return _get('${ApiConfig.baseUrl}/sensors/thresholds',
+        (d) => d as Map<String, dynamic>);
+  }
+
+  Future<void> updateThresholds(double tempWarning, double tempDanger) async {
+    final res = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/sensors/thresholds'),
+      headers: _headers,
+      body: jsonEncode({
+        'temp_warning': tempWarning,
+        'temp_danger': tempDanger,
+        'hum_warning': 80.0,
+        'hum_danger': 85.0,
+      }),
+    ).timeout(const Duration(seconds: 10));
+    _parse(res);
+  }
 
   Future<List<SensorReading>> getSensorHistory(
     String nodeId, {
@@ -274,7 +298,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getHealth() async {
     try {
       final res = await http.get(
-        Uri.parse('${ApiConfig.baseUrl.replaceAll('/api', '')}${ApiConfig.health}'),
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.health}'),
         headers: {'Content-Type': 'application/json'},
       ).timeout(const Duration(seconds: 5));
       return jsonDecode(res.body) as Map<String, dynamic>;

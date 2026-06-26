@@ -18,14 +18,16 @@ bearer = HTTPBearer()
 # ── Bcrypt — pakai library bcrypt langsung, bypass passlib ───────────────────
 
 def hash_password(plain: str) -> str:
-    """Hash access code dengan bcrypt"""
-    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+    """Hash access code dengan bcrypt (truncate ke 72 bytes — batas bcrypt)"""
+    encoded = plain.encode("utf-8")[:72]
+    return bcrypt.hashpw(encoded, bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verifikasi access code terhadap hash bcrypt"""
     try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        encoded = plain.encode("utf-8")[:72]
+        return bcrypt.checkpw(encoded, hashed.encode("utf-8"))
     except Exception:
         return False
 

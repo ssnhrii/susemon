@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from typing import Optional
-from app.core.database import get_pool
+from app.core.database import get_pool, get_thresholds
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.services.ai_engine import analyze_node
@@ -8,13 +8,6 @@ import logging
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 logger = logging.getLogger("susemon")
-
-THRESHOLDS = {
-    "temp_warning": settings.AI_TEMP_WARNING,
-    "temp_danger":  settings.AI_TEMP_DANGER,
-    "hum_warning":  settings.AI_HUM_WARNING,
-    "hum_danger":   settings.AI_HUM_DANGER,
-}
 
 
 async def _get_readings(node_id: str, limit: int = 50):
@@ -77,16 +70,17 @@ async def get_prediction(node_id: str, limit: int = Query(30), user=Depends(get_
             "signal_count": 0,
         }}
 
-    result = analyze_node(readings, THRESHOLDS)
+    thresholds = await get_thresholds()
+    result = analyze_node(readings, thresholds)
 
     # Simpan prediksi
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
-                INSERT INTO ai_predictions (node_id, prediction_type, confidence, predicted_value, prediction_time)
-                VALUES (%s,'temperature',%s,%s,DATE_ADD(NOW(), INTERVAL 30 MINUTE))
-            """, (node_id, result["confidence"], result.get("predicted_temp")))
+                INSERT INTO ai_predictions (node_id, prediction_type, confidence, predicted_value, risk_level, prediction_time)
+                VALUES (%s, 'temperature', %s, %s, %s, DATE_ADD(NOW(), INTERVAL 30 MINUTE))
+            """, (node_id, result["confidence"], result.get("predicted_temp"), result.get("risk_level", "LOW")))
 
     await _maybe_notify(node_id, result)
     return {"success": True, "data": {"node_id": node_id, **result}}
@@ -100,6 +94,7 @@ async def get_analysis(user=Depends(get_current_user)):
             await cur.execute("SELECT node_id, node_name, location FROM sensor_nodes WHERE is_active=TRUE")
             nodes = await cur.fetchall()
 
+    thresholds = await get_thresholds()
     analysis = []
     for node_id, node_name, location in nodes:
         readings = await _get_readings(node_id, 50)
@@ -108,7 +103,7 @@ async def get_analysis(user=Depends(get_current_user)):
                               "status": "INSUFFICIENT_DATA", "anomaly_detected": False,
                               "overheating_risk": False, "confidence": 0})
             continue
-        result = analyze_node(readings, THRESHOLDS)
+        result = analyze_node(readings, thresholds)
         analysis.append({"node_id": node_id, "node_name": node_name, "location": location, **result})
 
     analysis.sort(key=lambda x: (not x.get("anomaly_detected", False), -(x.get("current_temp") or 0)))
@@ -123,6 +118,7 @@ async def get_summary(user=Depends(get_current_user)):
             await cur.execute("SELECT node_id FROM sensor_nodes WHERE is_active=TRUE")
             nodes = [r[0] for r in await cur.fetchall()]
 
+    thresholds = await get_thresholds()
     total_anomaly = 0
     total_overheat = 0
     max_temp = 0.0
@@ -132,7 +128,7 @@ async def get_summary(user=Depends(get_current_user)):
         readings = await _get_readings(node_id, 20)
         if len(readings) < 3:
             continue
-        result = analyze_node(readings, THRESHOLDS)
+        result = analyze_node(readings, thresholds)
         if result["anomaly_detected"]:  total_anomaly += 1
         if result["overheating_risk"]:  total_overheat += 1
         if (result.get("current_temp") or 0) > max_temp:
@@ -141,7 +137,6 @@ async def get_summary(user=Depends(get_current_user)):
 
     global_status = "BERBAHAYA" if total_overheat > 0 else "WASPADA" if total_anomaly > 0 else "AMAN"
 
-    pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
@@ -185,7 +180,7 @@ async def get_history(node_id: str, limit: int = Query(20), user=Depends(get_cur
 
 
 @router.post("/analyze")
-async def run_analysis(body: dict = {}, user=Depends(get_current_user)):
+async def run_analysis(body: Optional[dict] = Body(default={}), user=Depends(get_current_user)):
     node_id = body.get("node_id")
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -196,12 +191,13 @@ async def run_analysis(body: dict = {}, user=Depends(get_current_user)):
                 await cur.execute("SELECT node_id FROM sensor_nodes WHERE is_active=TRUE")
             nodes = [r[0] for r in await cur.fetchall()]
 
+    thresholds = await get_thresholds()
     results = []
     for nid in nodes:
         readings = await _get_readings(nid, 50)
         if len(readings) < 3:
             continue
-        result = analyze_node(readings, THRESHOLDS)
+        result = analyze_node(readings, thresholds)
         await _maybe_notify(nid, result)
         results.append({"node_id": nid, **result})
 

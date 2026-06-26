@@ -81,17 +81,17 @@ INSERT IGNORE INTO users (ip_address, access_code, name, role) VALUES
 
 -- ── Seed: sensor nodes ───────────────────────────────────────
 INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
-('A1', 'Node Sensor A1', 'Rack Server Utama'),
+('TA11', 'Node Sensor TA11', 'Rack Server Utama'),
 ('B2', 'Node Sensor B2', 'Rack Server Backup'),
 ('C3', 'Node Sensor C3', 'Rack Network'),
 ('D4', 'Node Sensor D4', 'Rack Storage');
 
 -- ── Seed: sample sensor data (untuk testing AI) ──────────────
 INSERT IGNORE INTO sensor_data (node_id, temperature, humidity, status) VALUES
-('A1', 27.5, 61.0, 'AMAN'),('A1', 28.0, 62.0, 'AMAN'),('A1', 27.8, 60.5, 'AMAN'),
-('A1', 28.3, 63.0, 'AMAN'),('A1', 28.1, 61.5, 'AMAN'),('A1', 27.9, 62.5, 'AMAN'),
-('A1', 28.5, 63.5, 'AMAN'),('A1', 28.2, 62.0, 'AMAN'),('A1', 27.7, 61.0, 'AMAN'),
-('A1', 28.4, 62.8, 'AMAN'),
+('TA11', 27.5, 61.0, 'AMAN'),('TA11', 28.0, 62.0, 'AMAN'),('TA11', 27.8, 60.5, 'AMAN'),
+('TA11', 28.3, 63.0, 'AMAN'),('TA11', 28.1, 61.5, 'AMAN'),('TA11', 27.9, 62.5, 'AMAN'),
+('TA11', 28.5, 63.5, 'AMAN'),('TA11', 28.2, 62.0, 'AMAN'),('TA11', 27.7, 61.0, 'AMAN'),
+('TA11', 28.4, 62.8, 'AMAN'),
 
 ('B2', 31.0, 66.0, 'WASPADA'),('B2', 31.5, 67.0, 'WASPADA'),('B2', 32.0, 67.5, 'WASPADA'),
 ('B2', 31.8, 66.5, 'WASPADA'),('B2', 32.1, 68.0, 'WASPADA'),('B2', 31.3, 65.5, 'WASPADA'),
