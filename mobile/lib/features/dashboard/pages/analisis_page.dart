@@ -48,7 +48,7 @@ class _AnalisisPageState extends State<AnalisisPage> {
         child: SafeArea(
           child: Column(
             children: [
-              _buildHeader(sensor.wsConnected),
+              _buildHeader(),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
