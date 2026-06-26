@@ -141,8 +141,8 @@ async def init_db():
 
             # Seed users — password di-hash dengan bcrypt
             import bcrypt as _bcrypt
-            _hash_admin   = _bcrypt.hashpw(b"ADMIN123",    _bcrypt.gensalt(rounds=12)).decode()
-            _hash_network = _bcrypt.hashpw(b"SUSEMON2026", _bcrypt.gensalt(rounds=12)).decode()
+            _hash_admin   = _bcrypt.hashpw(b"ADMIN123"[:72],    _bcrypt.gensalt(rounds=12)).decode()
+            _hash_network = _bcrypt.hashpw(b"SUSEMON2026"[:72], _bcrypt.gensalt(rounds=12)).decode()
 
             await cur.execute("""
                 INSERT IGNORE INTO users (ip_address, access_code, name, role) VALUES
@@ -155,14 +155,14 @@ async def init_db():
                 WHERE ip_address IN ('127.0.0.1','0.0.0.0') AND (role IS NULL OR role='pic')
             """)
 
-            # Seed nodes
-            await cur.execute("""
-                INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
-                ('TA11','Node Sensor TA11','Rack Server Utama'),
-                ('B2','Node Sensor B2','Rack Server Backup'),
-                ('C3','Node Sensor C3','Rack Network'),
-                ('D4','Node Sensor D4','Rack Storage')
-            """)
+            # Seed node utama saja jika belum ada node sama sekali
+            await cur.execute("SELECT COUNT(*) FROM sensor_nodes")
+            node_count = (await cur.fetchone())[0]
+            if node_count == 0:
+                await cur.execute("""
+                    INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
+                    ('TA11','Node Sensor TA11','Rack Server Utama')
+                """)
 
     logger.info("Database initialized")
 

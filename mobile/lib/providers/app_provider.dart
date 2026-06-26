@@ -18,7 +18,20 @@ class AuthProvider extends ChangeNotifier {
   bool _loading = false;
   String? _error;
 
-  AuthProvider(this._api);
+  AuthProvider(this._api) {
+    _api.onUnauthorized = _handleUnauthorized;
+  }
+
+  void _handleUnauthorized() {
+    if (!_loggedIn) return;
+    _loggedIn = false;
+    _userName = null;
+    _role     = 'pic';
+    _storage.delete(key: 'token');
+    _storage.delete(key: 'user_role');
+    _storage.delete(key: 'user_name');
+    notifyListeners();
+  }
 
   bool get loggedIn   => _loggedIn;
   String? get userName => _userName;
@@ -94,6 +107,7 @@ class SensorProvider extends ChangeNotifier {
   bool _wsConnected = false;
   String? _error;
   Timer? _pollTimer;
+  Timer? _statsTimer;
   StreamSubscription? _wsSub;
 
   SensorProvider(this._api, this._ws);
@@ -142,7 +156,7 @@ class SensorProvider extends ChangeNotifier {
     });
 
     // Refresh stats setiap 30 detik
-    Timer.periodic(const Duration(seconds: 30), (_) => _fetchStats());
+    _statsTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchStats());
   }
 
   Future<void> _fetchLatest() async {
@@ -188,6 +202,7 @@ class SensorProvider extends ChangeNotifier {
 
   void stop() {
     _pollTimer?.cancel();
+    _statsTimer?.cancel();
     _wsSub?.cancel();
     _ws.disconnect();
   }
@@ -249,6 +264,10 @@ class NotificationProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void stop() {
+    _pollTimer?.cancel();
+  }
+
   @override
   void dispose() {
     _pollTimer?.cancel();
@@ -298,6 +317,10 @@ class AiProvider extends ChangeNotifier {
         notifyListeners();
       }
     } catch (_) {}
+  }
+
+  void stop() {
+    _pollTimer?.cancel();
   }
 
   @override

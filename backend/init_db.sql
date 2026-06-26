@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sensor_data (
     temperature DECIMAL(5,2) NOT NULL,
     humidity    DECIMAL(5,2) NOT NULL,
     status      ENUM('AMAN','WASPADA','BERBAHAYA') NOT NULL,
+    rssi        SMALLINT     NULL,
     timestamp   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (node_id) REFERENCES sensor_nodes(node_id) ON DELETE CASCADE,
     INDEX idx_node_ts (node_id, timestamp),

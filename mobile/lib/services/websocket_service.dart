@@ -79,17 +79,30 @@ class WebSocketService {
         return;
       }
 
-      // Single node update dari MQTT listener
+      // Single node update dari MQTT listener (real-time per paket)
       if (type == 'sensor_update' && msg.containsKey('node_id')) {
+        final aiMap = msg['ai'] as Map<String, dynamic>?;
         final r = SensorReading(
           id: 0,
           nodeId: msg['node_id'] ?? '',
           temperature: (msg['temperature'] as num?)?.toDouble() ?? 0,
           humidity: (msg['humidity'] as num?)?.toDouble() ?? 0,
           status: msg['status'] ?? 'AMAN',
+          rssi: (msg['rssi'] as num?)?.toInt(),
           timestamp: DateTime.tryParse(msg['timestamp'] ?? '')?.toUtc() ?? DateTime.now().toUtc(),
         );
         _controller?.add([r]);
+        // Kirim juga sebagai AI alert jika ada data AI
+        if (aiMap != null && (aiMap['anomaly_detected'] == true || aiMap['overheating_risk'] == true)) {
+          _aiController?.add({
+            'type': 'ai_alert',
+            'node_id': msg['node_id'],
+            'risk_level': aiMap['risk_level'] ?? 'LOW',
+            'confidence': aiMap['confidence'] ?? 0,
+            'insights': aiMap['insights'] ?? [],
+            'timestamp': msg['timestamp'],
+          });
+        }
         return;
       }
 

@@ -197,6 +197,70 @@ async def add_sensor_data(body: SensorDataIn, _=Depends(verify_gateway_key)):
     }
 
 
+@router.get("/node-status/{node_id}")
+async def get_node_status_for_device(node_id: str, _=Depends(verify_gateway_key)):
+    """
+    Endpoint khusus untuk node sensor polling status AI — dilindungi API Key.
+    Tidak butuh JWT. Dipakai oleh firmware node via HTTP.
+    """
+    if not _VALID_NODE_ID.match(node_id):
+        raise HTTPException(status_code=400, detail="node_id tidak valid")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # Ambil data terbaru dari sensor_data
+            await cur.execute(
+                "SELECT status, temperature, humidity, timestamp "
+                "FROM sensor_data WHERE node_id=%s ORDER BY timestamp DESC LIMIT 1",
+                (node_id,)
+            )
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Belum ada data untuk node ini")
+
+    # Ambil AI prediction terbaru jika ada
+    from app.services.ai_engine import analyze_node
+    from app.core.config import settings as cfg
+    thresholds = {
+        "temp_warning": cfg.AI_TEMP_WARNING,
+        "temp_danger":  cfg.AI_TEMP_DANGER,
+        "hum_warning":  cfg.AI_HUM_WARNING,
+        "hum_danger":   cfg.AI_HUM_DANGER,
+    }
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT temperature, humidity, timestamp FROM sensor_data "
+                "WHERE node_id=%s ORDER BY timestamp DESC LIMIT 20",
+                (node_id,)
+            )
+            readings = [{"temperature": r[0], "humidity": r[1], "timestamp": r[2]}
+                        for r in await cur.fetchall()]
+    readings.reverse()
+
+    risk_level = "LOW"
+    confidence = 0
+    if len(readings) >= 3:
+        ai = analyze_node(readings, thresholds)
+        risk_level = ai.get("risk_level", "LOW")
+        confidence = ai.get("confidence", 0)
+
+    return {
+        "success": True,
+        "data": {
+            "node_id":    node_id,
+            "status":     row[0],
+            "temperature": float(row[1]),
+            "humidity":    float(row[2]),
+            "risk_level":  risk_level,
+            "confidence":  confidence,
+            "timestamp":   str(row[3]),
+        }
+    }
+
+
 @router.get("/nodes/{node_id}")
 async def get_node_detail(node_id: str, user=Depends(get_current_user)):
     if not _VALID_NODE_ID.match(node_id):

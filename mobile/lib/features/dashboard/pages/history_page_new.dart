@@ -37,10 +37,10 @@ class _HistoryPageNewState extends State<HistoryPageNew> {
         setState(() { _nodes = ids; _nodeId = ids.first; });
         _fetch();
       } else {
-        final sensorProvider = context.read<SensorProvider>();
-        sensorProvider.refresh().then((_) {
-          final freshIds = sensorProvider.latest.map((r) => r.nodeId).toList();
-          if (freshIds.isNotEmpty && mounted) {
+        sensor.refresh().then((_) {
+          if (!mounted) return;
+          final freshIds = context.read<SensorProvider>().latest.map((r) => r.nodeId).toList();
+          if (freshIds.isNotEmpty) {
             setState(() { _nodes = freshIds; _nodeId = freshIds.first; });
             _fetch();
           }

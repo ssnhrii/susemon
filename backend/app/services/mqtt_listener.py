@@ -56,9 +56,10 @@ def _on_connect(client, userdata, flags, reason_code, properties=None):
         logger.error(f"MQTT connect failed: {reason_code}")
 
 
-def _on_disconnect(client, userdata, rc, properties=None):
+def _on_disconnect(client, userdata, disconnect_flags, reason_code=None, properties=None):
+    rc = reason_code if isinstance(reason_code, int) else (0 if reason_code is None or str(reason_code) == "Normal disconnection" else 1)
     if rc != 0:
-        logger.warning(f"MQTT disconnected ({rc}), auto-reconnect aktif...")
+        logger.warning(f"MQTT disconnected ({reason_code}), auto-reconnect aktif...")
 
 
 def _normalize_timestamp(ts_str: str) -> str:
@@ -81,30 +82,152 @@ def _normalize_timestamp(ts_str: str) -> str:
         return datetime.now(timezone.utc).isoformat()
 
 
+def _parse_dragino_payload(raw: dict) -> dict:
+    """
+    Normalisasi berbagai format payload dari Dragino LG02.
+
+    Dragino bisa kirim dalam 3 format tergantung firmware & konfigurasi:
+    1. JSON langsung dari Lua script (format baru — script dragino_gateway_script.lua):
+       {"node_id":"TA11","temperature":28.5,"humidity":62.0,"rssi":-85,"snr":9.5,"timestamp":"..."}
+    2. Wrapper Dragino dengan field "data" berisi JSON string (base64 atau plain):
+       {"rxInfo":{"rssi":-85,"snr":9.5},"data":"{\"node_id\":\"TA11\",...}"}
+    3. Wrapper Dragino dengan field "data" berisi hex-encoded JSON (format lama):
+       {"rxInfo":{"rssi":-85},"data":"7b226e6f64655f6964223a2254413131227d"}
+    """
+    # Format 1: sudah ada node_id → sudah bersih, ambil rssi/snr dari root jika ada
+    if "node_id" in raw:
+        return raw
+
+    # Ekstrak rssi/snr dari rxInfo (format Dragino standar)
+    rx_info = raw.get("rxInfo") or raw.get("gatewayInfo") or {}
+    if isinstance(rx_info, list):
+        rx_info = rx_info[0] if rx_info else {}
+    rssi = rx_info.get("rssi") or raw.get("rssi")
+    snr  = rx_info.get("snr")  or rx_info.get("loRaSNR") or raw.get("snr")
+
+    data_field = raw.get("data") or raw.get("phyPayload")
+    if not data_field or not isinstance(data_field, str):
+        return raw
+
+    data_str = data_field.strip()
+
+    # Format 3: coba decode hex
+    try:
+        decoded_bytes = bytes.fromhex(data_str)
+        decoded_str   = decoded_bytes.decode("utf-8")
+        decoded_json  = json.loads(decoded_str)
+        if isinstance(decoded_json, dict) and "node_id" in decoded_json:
+            if rssi is not None:
+                decoded_json.setdefault("rssi", rssi)
+            if snr is not None:
+                decoded_json.setdefault("snr", snr)
+            logger.info(f"Dragino hex decoded: {decoded_json}")
+            return decoded_json
+    except Exception:
+        pass
+
+    # Format 2: coba parse JSON string langsung
+    try:
+        decoded_json = json.loads(data_str)
+        if isinstance(decoded_json, dict) and "node_id" in decoded_json:
+            if rssi is not None:
+                decoded_json.setdefault("rssi", rssi)
+            if snr is not None:
+                decoded_json.setdefault("snr", snr)
+            logger.info(f"Dragino JSON string decoded: {decoded_json}")
+            return decoded_json
+    except Exception:
+        pass
+
+    logger.warning(f"Dragino payload tidak dapat di-decode: {data_str[:80]}")
+    return raw
+
+
+def _decode_payload(payload_bytes: bytes) -> dict:
+    """
+    Decode payload MQTT dari berbagai sumber:
+    1. JSON biasa: {"node_id":"TA11","temperature":28.5,...}
+    2. Dragino LoRaRAW wrapper JSON: {"data":"7b226e6f...","rxInfo":{...}}
+    3. Dragino raw hex string: 7b226e6f64655f6964223a...
+    4. Dragino raw bytes (langsung JSON sebagai bytes)
+    """
+    # Coba sebagai hex string murni (bukan JSON)
+    try:
+        hex_str = payload_bytes.decode("utf-8").strip()
+        if re.match(r'^[0-9a-fA-F]+$', hex_str):
+            decoded = bytes.fromhex(hex_str).decode("utf-8")
+            result = json.loads(decoded)
+            if isinstance(result, dict) and "node_id" in result:
+                logger.info(f"Dragino raw hex decoded: {result}")
+                return result
+    except Exception:
+        pass
+
+    # Coba sebagai JSON
+    try:
+        raw = json.loads(payload_bytes.decode("utf-8"))
+        return _parse_dragino_payload(raw)
+    except Exception:
+        pass
+
+    # Coba decode bytes langsung sebagai hex (Dragino kirim bytes bukan string)
+    try:
+        hex_str = payload_bytes.hex()
+        decoded = bytes.fromhex(hex_str).decode("utf-8")
+        result = json.loads(decoded)
+        if isinstance(result, dict) and "node_id" in result:
+            logger.info(f"Dragino bytes hex decoded: {result}")
+            return result
+    except Exception:
+        pass
+
+    # Coba format CSV: NODE,<id>,<temp>,<status>,<hum>,...
+    try:
+        text = payload_bytes.decode("utf-8").strip()
+        result = _parse_csv_payload(text)
+        logger.info(f"CSV payload decoded: {result}")
+        return result
+    except Exception:
+        pass
+
+    raise ValueError(f"Tidak bisa decode payload: {payload_bytes[:80]}")
+
+
+def _parse_csv_payload(text: str) -> dict:
+    """
+    Parse format CSV dari node sensor lain (backup/legacy):
+    NODE,<node_id>,<temperature>,<status_str>,<humidity>,...
+    Contoh: NODE,906,-26.22,Bahaya,0.66,0.000000,0.000000
+    Humidity dikalikan 100 jika nilainya <= 1.0 (format desimal 0-1)
+    """
+    parts = [p.strip() for p in text.split(',')]
+    if len(parts) < 5 or parts[0].upper() != 'NODE':
+        raise ValueError("Bukan format CSV NODE")
+    node_id = parts[1]
+    try:
+        temperature = float(parts[2])
+        humidity    = float(parts[4])
+        # Konversi jika humidity dalam format 0-1
+        if 0.0 <= humidity <= 1.0:
+            humidity = round(humidity * 100, 2)
+    except (ValueError, IndexError):
+        raise ValueError("Nilai CSV tidak valid")
+    return {
+        "node_id":     node_id,
+        "temperature": temperature,
+        "humidity":    humidity,
+    }
+
+
 def _on_message(client, userdata, msg):
     try:
-        raw = json.loads(msg.payload.decode("utf-8"))
-        
-        # Deteksi & dekode otomatis jika payload berasal dari gateway Dragino LG02 (hex-encoded data)
-        if isinstance(raw, dict) and "data" in raw and isinstance(raw["data"], str):
-            try:
-                hex_str = raw["data"].strip()
-                decoded_bytes = bytes.fromhex(hex_str)
-                decoded_str = decoded_bytes.decode("utf-8")
-                decoded_json = json.loads(decoded_str)
-                if isinstance(decoded_json, dict) and "node_id" in decoded_json:
-                    logger.info(f"MQTT IN (Dragino Hex Decoded): {decoded_json}")
-                    raw = decoded_json
-            except Exception as hex_err:
-                logger.debug(f"Percobaan decode hex gagal (mungkin bukan data Dragino): {hex_err}")
-
+        raw = _decode_payload(msg.payload)
         logger.info(f"MQTT IN: {raw}")
-        # Normalisasi timestamp ke UTC — konsisten di semua layer
         raw["timestamp"] = _normalize_timestamp(raw.get("timestamp", ""))
         if _loop and _loop.is_running():
             asyncio.run_coroutine_threadsafe(_process(raw), _loop)
     except Exception as e:
-        logger.error(f"MQTT parse error: {e} | payload={msg.payload}")
+        logger.error(f"MQTT parse error: {e} | payload={msg.payload[:80]}")
 
 
 async def _process(data: dict):
@@ -271,19 +394,26 @@ async def _process(data: dict):
             "temperature": temperature,
             "humidity":    humidity,
             "status":      final_status,
-            "timestamp":   datetime.now(timezone.utc).isoformat(),  # selalu UTC
+            "rssi":        rssi,
+            "timestamp":   data.get("timestamp", datetime.now(timezone.utc).isoformat()),
         }
         if ai_result:
             ws_payload["ai"] = {
-                "anomaly_detected": ai_result["anomaly_detected"],
-                "risk_level":       ai_result["risk_level"],
-                "confidence":       ai_result["confidence"],
-                "predicted_temp":   ai_result.get("predicted_temp"),
-                "insights":         ai_result.get("insights", []),
+                "anomaly_detected":       ai_result["anomaly_detected"],
+                "risk_level":             ai_result["risk_level"],
+                "confidence":             ai_result["confidence"],
+                "predicted_temp":         ai_result.get("predicted_temp"),
+                "trend_per_hour":         ai_result.get("trend_per_hour"),
+                "trend_direction":        ai_result.get("trend_direction"),
+                "overheating_risk":       ai_result.get("overheating_risk"),
+                "signal_count":           ai_result.get("signal_count", 0),
+                "insights":               ai_result.get("insights", []),
             }
         await _ws_manager.broadcast(ws_payload)
 
     # ── 7. Publish downlink ke Gateway → Node ──
+    # Format plain JSON — Dragino LG02 Lua script (dragino_gateway_script.lua)
+    # akan subscribe topic ini dan re-transmit via LoRa ke node
     if _mqtt_client:
         downlink = {
             "node_id":    node_id,
@@ -291,15 +421,6 @@ async def _process(data: dict):
             "risk":       ai_result.get("risk_level", "LOW") if ai_result else "LOW",
             "confidence": ai_result.get("confidence", 0) if ai_result else 0,
         }
-        
-        # Dukung Dragino LG02: tambahkan representasi hex di field 'data'
-        # Standard gateway akan mengabaikan field ini, Dragino LG02 akan menggunakannya untuk transmit LoRa
-        try:
-            downlink_str = json.dumps(downlink)
-            downlink["data"] = downlink_str.encode("utf-8").hex()
-        except Exception as hex_err:
-            logger.error(f"Gagal menyusun payload hex untuk Dragino: {hex_err}")
-
         _mqtt_client.publish(settings.MQTT_DOWNLINK_TOPIC, json.dumps(downlink))
         logger.info(f"Downlink → {node_id}: {final_status} | {downlink['risk']} | {downlink['confidence']}%")
 

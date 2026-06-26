@@ -116,7 +116,8 @@ async def broadcast_sensor_data():
             async with pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute("""
-                        SELECT sd.*, sn.node_name, sn.location
+                        SELECT sd.node_id, sd.temperature, sd.humidity, sd.status,
+                               sd.rssi, sd.timestamp, sn.node_name, sn.location
                         FROM sensor_data sd
                         INNER JOIN sensor_nodes sn ON sd.node_id = sn.node_id
                         WHERE sd.timestamp = (
@@ -127,10 +128,12 @@ async def broadcast_sensor_data():
                     rows = await cur.fetchall()
                     cols = [d[0] for d in cur.description]
             data = [dict(zip(cols, r)) for r in rows]
+            # timestamp broadcast = timestamp data terbaru (bukan now())
+            latest_ts = max((r["timestamp"] for r in data), default=None) if data else None
             await manager.broadcast({
                 "type": "sensor_update",
                 "data": data,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": str(latest_ts) if latest_ts else datetime.now(timezone.utc).isoformat()
             })
         except Exception as e:
             logger.error(f"Broadcast error: {e}")

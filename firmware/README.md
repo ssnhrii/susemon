@@ -1,13 +1,16 @@
-# SUSEMON — Arduino Firmware v2.1
+# SUSEMON — Firmware & Gateway v2.2
 
-Firmware untuk hardware IoT SUSEMON (PBL-TRPL412) — Politeknik Negeri Batam.
+Firmware node sensor dan konfigurasi gateway untuk SUSEMON (PBL-TRPL412) — Politeknik Negeri Batam.
 
 ## Versi
 
 | File | Versi | Hardware |
 |---|---|---|
-| `node_sensor.ino` | v2.1 | LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276) |
-| `gateway.ino` | v2.1 | LILYGO LORA32 T22_V1.1 (ESP32 + SX1276) |
+| `node_sensor.ino` | v2.5 | LILYGO T3 V1.6.1 (ESP32-PICO-D4 + SX1276) |
+| `dragino_gateway_script.lua` | v1.0 | Dragino LG02 (Full Gateway) |
+
+> ESP32 gateway (`gateway.ino`) sudah **dihapus** — digantikan sepenuhnya oleh Dragino LG02.
+> Lihat `dragino_setup.md` untuk panduan setup lengkap.
 
 ---
 
@@ -53,34 +56,8 @@ LoRa RST    → GPIO 23  (built-in)
 
 ## Gateway
 
-### Hardware
-
-| Komponen | Keterangan |
-|---|---|
-| LILYGO LORA32 T22_V1.1 | ESP32 + SX1276 + OLED built-in |
-| WiFi | Built-in ESP32 |
-
-### Wiring T22_V1.1
-
-```
-Semua built-in — tidak ada wiring tambahan
-OLED SDA → GPIO 4  (berbeda dari T3!)
-OLED SCL → GPIO 15 (berbeda dari T3!)
-LoRa RST → GPIO 14
-```
-
-### Konfigurasi via WiFiManager
-
-Pertama kali nyala, gateway buka hotspot `SUSEMON-Gateway` (pass: `susemon123`).
-Buka browser → `192.168.4.1` → isi:
-- WiFi SSID + Password
-- IP Backend Server
-- MQTT Username
-- MQTT Password
-
-Konfigurasi disimpan di flash — tidak perlu diulang setelah restart.
-
-Reset konfigurasi: tahan tombol IO38 selama 3 detik.
+> **Dragino LG02 digunakan sebagai full gateway** — tidak perlu ESP32 gateway terpisah.
+> Lihat `dragino_setup.md` untuk panduan konfigurasi lengkap.
 
 ---
 

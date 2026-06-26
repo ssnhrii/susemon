@@ -41,8 +41,10 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
       ),
     );
     if (confirm == true && mounted) {
-      context.read<AuthProvider>().logout();
       context.read<SensorProvider>().stop();
+      context.read<NotificationProvider>().stop();
+      context.read<AiProvider>().stop();
+      context.read<AuthProvider>().logout();
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -105,7 +107,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
                       const SizedBox(height: 14),
                     ],
                     _buildSection('Tentang', Icons.info_outline, [
-                      _infoRow('Versi', '2.1.0'),
+                      _infoRow('Versi', '2.2.0'),
                       _infoRow('ID Proyek', 'PBL-TRPL412'),
                       _infoRow('Institusi', 'Politeknik Negeri Batam'),
                       _infoRow('Teknologi', 'Flutter + LoRa + AI'),
@@ -300,7 +302,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
         ),
       ),
       Text(
-        'Peringatan dikirim jika suhu ≥ ${_threshold.toStringAsFixed(0)}°C',
+        'Threshold aktif dikonfigurasi di backend (.env)',
         style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
       ),
     ],

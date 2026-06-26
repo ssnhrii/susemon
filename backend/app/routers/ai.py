@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from typing import Optional
 from app.core.database import get_pool
 from app.core.security import get_current_user
@@ -141,7 +141,6 @@ async def get_summary(user=Depends(get_current_user)):
 
     global_status = "BERBAHAYA" if total_overheat > 0 else "WASPADA" if total_anomaly > 0 else "AMAN"
 
-    pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
@@ -185,7 +184,7 @@ async def get_history(node_id: str, limit: int = Query(20), user=Depends(get_cur
 
 
 @router.post("/analyze")
-async def run_analysis(body: dict = {}, user=Depends(get_current_user)):
+async def run_analysis(body: Optional[dict] = Body(default={}), user=Depends(get_current_user)):
     node_id = body.get("node_id")
     pool = await get_pool()
     async with pool.acquire() as conn:
