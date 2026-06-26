@@ -30,16 +30,21 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabControllers = List.generate(5, (i) => AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    ));
+    _tabControllers = List.generate(
+      5,
+      (i) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 200),
+      ),
+    );
     _tabControllers[0].forward();
   }
 
   @override
   void dispose() {
-    for (final c in _tabControllers) { c.dispose(); }
+    for (final c in _tabControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -56,41 +61,102 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     final unread = context.watch<NotificationProvider>().unreadCount;
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: const Color(0xFFF0F7FF),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
         switchInCurve: Curves.easeOut,
         switchOutCurve: Curves.easeIn,
-        transitionBuilder: (child, anim) => FadeTransition(
-          opacity: anim,
-          child: child,
-        ),
-        child: IndexedStack(
-          key: ValueKey(_idx),
-          index: _idx,
-          children: _pages,
-        ),
+        transitionBuilder: (child, anim) =>
+            FadeTransition(opacity: anim, child: child),
+        child: IndexedStack(key: ValueKey(_idx), index: _idx, children: _pages),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          border: Border(top: BorderSide(color: AppColors.cardBorder, width: 0.8)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, -4)),
-          ],
+      bottomNavigationBar: _BottomNav(
+        current: _idx,
+        unread: unread,
+        onTap: _onTabTap,
+        controllers: _tabControllers,
+      ),
+    );
+  }
+}
+
+class _BottomNav extends StatelessWidget {
+  final int current;
+  final int unread;
+  final Function(int) onTap;
+  final List<AnimationController> controllers;
+
+  const _BottomNav({
+    required this.current,
+    required this.unread,
+    required this.onTap,
+    required this.controllers,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.85),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
         ),
-        child: SafeArea(
-          child: SizedBox(
-            height: 64,
-            child: Row(
-              children: [
-                _NavItem(index: 0, current: _idx, icon: Icons.dashboard_rounded, label: 'Dashboard', onTap: _onTabTap, ctrl: _tabControllers[0]),
-                _NavItem(index: 1, current: _idx, icon: Icons.psychology_rounded, label: 'AI', onTap: _onTabTap, ctrl: _tabControllers[1]),
-                _NavItemBadge(index: 2, current: _idx, icon: Icons.notifications_rounded, label: 'Notifikasi', badge: unread, onTap: _onTabTap, ctrl: _tabControllers[2]),
-                _NavItem(index: 3, current: _idx, icon: Icons.history_rounded, label: 'Riwayat', onTap: _onTabTap, ctrl: _tabControllers[3]),
-                _NavItem(index: 4, current: _idx, icon: Icons.settings_rounded, label: 'Pengaturan', onTap: _onTabTap, ctrl: _tabControllers[4]),
-              ],
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              _NavItem(
+                index: 0,
+                current: current,
+                icon: Icons.dashboard_rounded,
+                label: 'Dashboard',
+                onTap: onTap,
+                ctrl: controllers[0],
+              ),
+              _NavItem(
+                index: 1,
+                current: current,
+                icon: Icons.psychology_rounded,
+                label: 'AI',
+                onTap: onTap,
+                ctrl: controllers[1],
+              ),
+              _NavItemBadge(
+                index: 2,
+                current: current,
+                icon: Icons.notifications_rounded,
+                label: 'Notifikasi',
+                badge: unread,
+                onTap: onTap,
+                ctrl: controllers[2],
+              ),
+              _NavItem(
+                index: 3,
+                current: current,
+                icon: Icons.bar_chart_rounded,
+                label: 'Laporan',
+                onTap: onTap,
+                ctrl: controllers[3],
+              ),
+              _NavItem(
+                index: 4,
+                current: current,
+                icon: Icons.settings_rounded,
+                label: 'Pengaturan',
+                onTap: onTap,
+                ctrl: controllers[4],
+              ),
+            ],
           ),
         ),
       ),
@@ -106,8 +172,12 @@ class _NavItem extends StatelessWidget {
   final AnimationController ctrl;
 
   const _NavItem({
-    required this.index, required this.current, required this.icon,
-    required this.label, required this.onTap, required this.ctrl,
+    required this.index,
+    required this.current,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.ctrl,
   });
 
   @override
@@ -117,32 +187,42 @@ class _NavItem extends StatelessWidget {
       child: GestureDetector(
         onTap: () => onTap(index),
         behavior: HitTestBehavior.opaque,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: selected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.85, end: 1.0).animate(
-                CurvedAnimation(parent: ctrl, curve: Curves.easeOutBack),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, size: 22, color: selected ? AppColors.primary : AppColors.textSecondary),
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.85, end: 1.0).animate(
+                  CurvedAnimation(parent: ctrl, curve: Curves.easeOutBack),
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: selected ? AppColors.primary : AppColors.textDim,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 200),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              color: selected ? AppColors.primary : AppColors.textSecondary,
+            const SizedBox(height: 2),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? AppColors.primary : AppColors.textDim,
+                letterSpacing: 0.3,
+              ),
+              child: Text(label),
             ),
-            child: Text(label),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -156,8 +236,13 @@ class _NavItemBadge extends StatelessWidget {
   final AnimationController ctrl;
 
   const _NavItemBadge({
-    required this.index, required this.current, required this.icon,
-    required this.label, required this.badge, required this.onTap, required this.ctrl,
+    required this.index,
+    required this.current,
+    required this.icon,
+    required this.label,
+    required this.badge,
+    required this.onTap,
+    required this.ctrl,
   });
 
   @override
@@ -167,53 +252,78 @@ class _NavItemBadge extends StatelessWidget {
       child: GestureDetector(
         onTap: () => onTap(index),
         behavior: HitTestBehavior.opaque,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Stack(clipBehavior: Clip.none, children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: selected ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.85, end: 1.0).animate(
-                  CurvedAnimation(parent: ctrl, curve: Curves.easeOutBack),
-                ),
-                child: Icon(icon, size: 22, color: selected ? AppColors.primary : AppColors.textSecondary),
-              ),
-            ),
-            if (badge > 0)
-              Positioned(
-                top: -2, right: -2,
-                child: AnimatedScale(
-                  scale: badge > 0 ? 1.0 : 0.0,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutBack,
-                  child: Container(
-                    width: 16, height: 16,
-                    decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-                    child: Center(
-                      child: Text(
-                        badge > 9 ? '9+' : '$badge',
-                        style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700),
-                      ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.85, end: 1.0).animate(
+                      CurvedAnimation(parent: ctrl, curve: Curves.easeOutBack),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 22,
+                      color: selected ? AppColors.primary : AppColors.textDim,
                     ),
                   ),
                 ),
-              ),
-          ]),
-          const SizedBox(height: 2),
-          AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 200),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-              color: selected ? AppColors.primary : AppColors.textSecondary,
+                if (badge > 0)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: AnimatedScale(
+                      scale: badge > 0 ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutBack,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            badge > 9 ? '9+' : '$badge',
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            child: Text(label),
-          ),
-        ]),
+            const SizedBox(height: 2),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? AppColors.primary : AppColors.textDim,
+                letterSpacing: 0.3,
+              ),
+              child: Text(label),
+            ),
+          ],
+        ),
       ),
     );
   }

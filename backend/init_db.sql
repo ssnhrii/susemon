@@ -1,5 +1,5 @@
 -- ============================================================
--- SUSEMON Database Init Script
+-- SUSEMON Database Init Script v2.1
 -- PBL-TRPL412 | Politeknik Negeri Batam
 -- ============================================================
 
@@ -15,14 +15,17 @@ CREATE TABLE IF NOT EXISTS users (
     ip_address  VARCHAR(50)  UNIQUE NOT NULL,
     access_code VARCHAR(255) NOT NULL,
     name        VARCHAR(100),
+    role        ENUM('admin','pic') DEFAULT 'pic',
+    is_active   BOOLEAN DEFAULT TRUE,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login  TIMESTAMP NULL
+    last_login  TIMESTAMP NULL,
+    last_ip     VARCHAR(50) NULL
 );
 
 -- ── Tabel sensor_nodes ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sensor_nodes (
     id         INT PRIMARY KEY AUTO_INCREMENT,
-    node_id    VARCHAR(10)  UNIQUE NOT NULL,
+    node_id    VARCHAR(20)  UNIQUE NOT NULL,
     node_name  VARCHAR(100) NOT NULL,
     location   VARCHAR(200) NOT NULL,
     is_active  BOOLEAN DEFAULT TRUE,
@@ -33,10 +36,11 @@ CREATE TABLE IF NOT EXISTS sensor_nodes (
 -- ── Tabel sensor_data ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sensor_data (
     id          INT PRIMARY KEY AUTO_INCREMENT,
-    node_id     VARCHAR(10)  NOT NULL,
+    node_id     VARCHAR(20)  NOT NULL,
     temperature DECIMAL(5,2) NOT NULL,
     humidity    DECIMAL(5,2) NOT NULL,
     status      ENUM('AMAN','WASPADA','BERBAHAYA') NOT NULL,
+    rssi        INT NULL,
     timestamp   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (node_id) REFERENCES sensor_nodes(node_id) ON DELETE CASCADE,
     INDEX idx_node_ts (node_id, timestamp),
@@ -46,7 +50,7 @@ CREATE TABLE IF NOT EXISTS sensor_data (
 -- ── Tabel notifications ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notifications (
     id         INT PRIMARY KEY AUTO_INCREMENT,
-    node_id    VARCHAR(10),
+    node_id    VARCHAR(20),
     title      VARCHAR(200) NOT NULL,
     message    TEXT         NOT NULL,
     type       ENUM('critical','warning','success','info') NOT NULL,
@@ -59,7 +63,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- ── Tabel ai_predictions ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ai_predictions (
     id               INT PRIMARY KEY AUTO_INCREMENT,
-    node_id          VARCHAR(10)  NOT NULL,
+    node_id          VARCHAR(20)  NOT NULL,
     prediction_type  VARCHAR(50)  NOT NULL,
     confidence       DECIMAL(5,2) NOT NULL,
     predicted_value  DECIMAL(5,2),
@@ -70,9 +74,10 @@ CREATE TABLE IF NOT EXISTS ai_predictions (
 );
 
 -- ── Seed: users ──────────────────────────────────────────────
-INSERT IGNORE INTO users (ip_address, access_code, name) VALUES
-('127.0.0.1',  'ADMIN123',    'Admin Local'),
-('0.0.0.0',    'SUSEMON2026', 'Admin Network');
+INSERT IGNORE INTO users (ip_address, access_code, name, role) VALUES
+('127.0.0.1',  'ADMIN123',    'Admin Lokal',    'admin'),
+('0.0.0.0',    'SUSEMON2026', 'Admin Jaringan', 'admin'),
+('10.0.2.2',   'ADMIN123',    'Admin Emulator', 'admin');
 
 -- ── Seed: sensor nodes ───────────────────────────────────────
 INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
@@ -114,9 +119,6 @@ INSERT IGNORE INTO notifications (node_id, title, message, type) VALUES
 (NULL, 'Sistem Aktif',
  'Semua node sensor terhubung. SUSEMON siap monitoring.', 'success');
 
--- ── Verifikasi ───────────────────────────────────────────────
+-- ── Verifikasi (diperbaiki) ─────────────────────────────────
 SELECT '=== SUSEMON DB READY ===' AS info;
-SELECT table_name, table_rows
-FROM information_schema.tables
-WHERE table_schema = 'susemon_db'
-ORDER BY table_name;
+SHOW TABLES FROM susemon_db;

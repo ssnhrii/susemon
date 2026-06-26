@@ -5,9 +5,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/app_provider.dart';
 import '../../shared/widgets/interactive.dart';
+import '../../shared/widgets/mesh_background.dart';
 import '../dashboard/main_layout.dart';
 
-/// V380 Pro style login: IP Address + Access Code
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -15,15 +15,14 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _ipCtrl   = TextEditingController();
+  final _ipCtrl = TextEditingController();
   final _codeCtrl = TextEditingController();
-  final _storage  = const FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage();
   bool _obscure = true;
 
   @override
   void initState() {
     super.initState();
-    // Isi field IP dari IP terakhir yang berhasil login
     _storage.read(key: 'server_ip').then((ip) {
       if (ip != null && ip.isNotEmpty && mounted) {
         _ipCtrl.text = ip;
@@ -43,11 +42,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final ok = await auth.login(_ipCtrl.text.trim(), _codeCtrl.text.trim());
     if (!mounted) return;
     if (ok) {
-      // Start providers setelah login
       context.read<SensorProvider>().start();
       context.read<NotificationProvider>().start();
       context.read<AiProvider>().start();
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainLayout()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainLayout()),
+      );
     }
   }
 
@@ -56,182 +57,367 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.watch<AuthProvider>();
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            children: [
-              const SizedBox(height: 48),
-              // Logo
-              Container(
-                width: 90, height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.bgCard,
-                  border: Border.all(color: AppColors.primary, width: 2),
-                  boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.3), blurRadius: 30, spreadRadius: 6)],
-                ),
-                child: const Icon(Icons.sensors, size: 42, color: AppColors.primary),
-              ),
-              const SizedBox(height: 20),
-              const Text('SUSEMON',
-                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 5)),
-              const SizedBox(height: 4),
-              Text('Server Room Monitoring', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-              const SizedBox(height: 48),
-
-              // Form
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.cardBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Masuk ke Sistem',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-                    const SizedBox(height: 4),
-                    Text('Gunakan IP Address & Access Code perangkat',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    const SizedBox(height: 24),
-
-                    // IP Address field
-                    _field('IP Address', _ipCtrl, Icons.router_outlined, false,
-                        hint: 'Contoh: 192.168.1.100'),
-                    const SizedBox(height: 14),
-
-                    // Access Code field
-                    _field('Access Code', _codeCtrl, Icons.vpn_key_outlined, _obscure,
-                        hint: 'XXXXXXXX',
-                        suffix: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
-                              color: AppColors.textSecondary, size: 20),
-                          onPressed: () => setState(() => _obscure = !_obscure),
-                        )),
-
-                    // Error
-                    if (auth.error != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.danger.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(children: [
-                          const Icon(Icons.error_outline, color: AppColors.danger, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(auth.error!,
-                              style: const TextStyle(fontSize: 12, color: AppColors.danger))),
-                        ]),
-                      ),
-                    ],
-
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity, height: 50,
-                      child: TapScale(
-                        scale: 0.97,
-                        onTap: auth.loading ? null : () {
-                          HapticFeedback.lightImpact();
-                          _login();
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: auth.loading
-                                ? AppColors.primary.withValues(alpha: 0.5)
-                                : AppColors.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: auth.loading
-                                ? const SizedBox(width: 20, height: 20,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text('Masuk',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-                          ),
-                        ),
-                      ),
+      backgroundColor: AppColors.bgLight,
+      body: MeshBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 32),
+                  _buildForm(auth),
+                  const SizedBox(height: 16),
+                  _buildSystemStatus(),
+                  const SizedBox(height: 24),
+                  Text(
+                    '© 2024 SUSEMON Intelligence',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-
-              // Hint
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.cardBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      const Icon(Icons.info_outline, size: 14, color: AppColors.primary),
-                      const SizedBox(width: 6),
-                      Text('Akun Default', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
-                    ]),
-                    const SizedBox(height: 8),
-                    _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
-                    _hintRow('Jaringan', '10.20.10.254  ·  SUSEMON2026'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text('PBL-TRPL412 · Politeknik Negeri Batam',
-                  style: TextStyle(fontSize: 11, color: AppColors.textDim)),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _field(String label, TextEditingController ctrl, IconData icon, bool obscure,
-      {String? hint, Widget? suffix}) {
+  Widget _buildHeader() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: ctrl,
-          obscureText: obscure,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: AppColors.textDim, fontSize: 13),
-            prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 18),
-            suffixIcon: suffix,
-            filled: true,
-            fillColor: AppColors.bgCardAlt,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: AppColors.cardBorder)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: AppColors.cardBorder)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.primary)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        // Logo circle
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary.withValues(alpha: 0.08),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.2),
+              width: 1.5,
+            ),
+          ),
+          child: const Icon(Icons.sensors, size: 36, color: AppColors.primary),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'SUSEMON',
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: AppColors.primary,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Infrastructure Monitoring System',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.onSurfaceVariant.withValues(alpha: 0.8),
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
     );
   }
 
+  Widget _buildForm(AuthProvider auth) {
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // IP Address field
+          _buildLabel('ALAMAT SERVER'),
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _ipCtrl,
+            hint: 'Contoh: 192.168.1.100',
+            icon: Icons.router_outlined,
+            obscure: false,
+          ),
+          const SizedBox(height: 16),
+
+          // Access Code field
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildLabel('ACCESS CODE'),
+              GestureDetector(
+                onTap: () {},
+                child: const Text(
+                  'Lupa kode?',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _codeCtrl,
+            hint: '••••••••',
+            icon: Icons.lock_outline,
+            obscure: _obscure,
+            suffix: IconButton(
+              icon: Icon(
+                _obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: AppColors.outline,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscure = !_obscure),
+            ),
+          ),
+
+          // Error message
+          if (auth.error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.errorContainer.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.error.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: AppColors.error,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      auth.error!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          // Login button
+          TapScale(
+            scale: 0.97,
+            onTap: auth.loading
+                ? null
+                : () {
+                    HapticFeedback.lightImpact();
+                    _login();
+                  },
+            child: Container(
+              width: double.infinity,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.primary, AppColors.primaryContainer],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: auth.loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Masuk',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Icon(Icons.login, color: Colors.white, size: 18),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+          Divider(color: AppColors.outlineVariant.withValues(alpha: 0.5)),
+          const SizedBox(height: 12),
+
+          // Default credentials hint
+          Row(
+            children: [
+              const Icon(
+                Icons.info_outline,
+                size: 14,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Akun Default',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary.withValues(alpha: 0.8),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
+          _hintRow('Jaringan', '10.20.10.254  ·  SUSEMON2026'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: AppColors.onSurfaceVariant.withValues(alpha: 0.7),
+        letterSpacing: 1.0,
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required bool obscure,
+    Widget? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      style: const TextStyle(
+        color: AppColors.onSurface,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: AppColors.outline.withValues(alpha: 0.5),
+          fontSize: 13,
+        ),
+        prefixIcon: Icon(icon, color: AppColors.outline, size: 18),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: AppColors.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSystemStatus() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF22C55E),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Sistem Aktif',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.onSurfaceVariant.withValues(alpha: 0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _hintRow(String label, String value) => Padding(
     padding: const EdgeInsets.only(top: 4),
-    child: Row(children: [
-      SizedBox(width: 40, child: Text(label, style: TextStyle(fontSize: 11, color: AppColors.textSecondary))),
-      Text(': $value', style: const TextStyle(fontSize: 11, color: Colors.white, fontFamily: 'monospace')),
-    ]),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 11, color: AppColors.textDim),
+          ),
+        ),
+        Text(
+          ': $value',
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.onSurface,
+            fontFamily: 'monospace',
+          ),
+        ),
+      ],
+    ),
   );
 }

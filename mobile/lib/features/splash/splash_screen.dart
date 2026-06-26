@@ -21,9 +21,18 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
-    _fade  = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
-    _scale = Tween<double>(begin: 0.7, end: 1).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _fade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
+    _scale = Tween<double>(
+      begin: 0.7,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
     _ctrl.forward();
     Timer(const Duration(seconds: 2), _navigate);
   }
@@ -37,45 +46,116 @@ class _SplashScreenState extends State<SplashScreen>
       context.read<SensorProvider>().start();
       context.read<NotificationProvider>().start();
       context.read<AiProvider>().start();
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainLayout()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainLayout()),
+      );
     } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+      );
     }
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _ctrl,
-          builder: (_, __) => Opacity(
-            opacity: _fade.value,
-            child: Transform.scale(
-              scale: _scale.value,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 110, height: 110,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: AppColors.bgCard,
-                      border: Border.all(color: AppColors.primary, width: 2),
-                      boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: 8)],
+      backgroundColor: AppColors.bgLight,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.topLeft,
+            radius: 2.5,
+            colors: [Color(0xFFEBF8FF), Color(0xFFF0F7FF)],
+          ),
+        ),
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _ctrl,
+            builder: (_, __) => Opacity(
+              opacity: _fade.value,
+              child: Transform.scale(
+                scale: _scale.value,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Logo
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.8),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.2),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.15),
+                            blurRadius: 40,
+                            spreadRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.sensors,
+                        size: 46,
+                        color: AppColors.primary,
+                      ),
                     ),
-                    child: const Icon(Icons.sensors, size: 52, color: AppColors.primary),
-                  ),
-                  const SizedBox(height: 28),
-                  const Text('SUSEMON', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 6)),
-                  const SizedBox(height: 8),
-                  Text('Smart Server Monitoring', style: TextStyle(fontSize: 13, color: AppColors.textSecondary, letterSpacing: 1.5)),
-                  const SizedBox(height: 48),
-                  SizedBox(width: 140, child: LinearProgressIndicator(backgroundColor: AppColors.bgCardAlt, color: AppColors.primary, minHeight: 2)),
-                ],
+                    const SizedBox(height: 28),
+                    const Text(
+                      'SUSEMON',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.primary,
+                        letterSpacing: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Infrastructure Monitoring System',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
+                        letterSpacing: 0.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 48),
+                    SizedBox(
+                      width: 120,
+                      child: LinearProgressIndicator(
+                        backgroundColor: AppColors.surfaceContainerHigh,
+                        valueColor: const AlwaysStoppedAnimation(
+                          AppColors.primary,
+                        ),
+                        minHeight: 2,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Memuat sistem...',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textDim,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

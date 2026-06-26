@@ -5,13 +5,18 @@ import 'services/api_service.dart';
 import 'services/websocket_service.dart';
 import 'providers/app_provider.dart';
 import 'features/splash/splash_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
   runApp(const SusemonApp());
 }
 
@@ -21,7 +26,7 @@ class SusemonApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final api = ApiService();
-    final ws  = WebSocketService();
+    final ws = WebSocketService();
 
     return MultiProvider(
       providers: [
@@ -34,24 +39,7 @@ class SusemonApp extends StatelessWidget {
       child: MaterialApp(
         title: 'SUSEMON',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF0A0E1A),
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF00B4FF),
-            surface: Color(0xFF111827),
-          ),
-          useMaterial3: true,
-          // Smooth page transitions
-          pageTransitionsTheme: const PageTransitionsTheme(
-            builders: {
-              TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-            },
-          ),
-          // Ripple effect
-          splashFactory: InkRipple.splashFactory,
-        ),
+        theme: AppTheme.lightTheme,
         home: const SplashScreen(),
       ),
     );
