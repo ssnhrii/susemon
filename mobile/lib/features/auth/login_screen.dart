@@ -1,4 +1,7 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -15,25 +18,57 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _ipCtrl = TextEditingController();
+  final _ipCtrl   = TextEditingController();
   final _codeCtrl = TextEditingController();
-  final _storage = const FlutterSecureStorage();
-  bool _obscure = true;
+  final _storage  = const FlutterSecureStorage();
+  bool _obscure   = true;
+  String _detectedIp = '';
+  RawDatagramSocket? _udpSocket;
 
   @override
   void initState() {
     super.initState();
     _storage.read(key: 'server_ip').then((ip) {
-      if (ip != null && ip.isNotEmpty && mounted) {
-        _ipCtrl.text = ip;
-      }
+      if (ip != null && ip.isNotEmpty && mounted) _ipCtrl.text = ip;
     });
+    _startUdpDiscovery();
+  }
+
+  /// UDP broadcast discovery — backend kirim beacon ke port 47808 setiap 5 detik
+  Future<void> _startUdpDiscovery() async {
+    try {
+      _udpSocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4, 47808,
+        reuseAddress: true,
+      );
+      _udpSocket!.broadcastEnabled = true;
+      _udpSocket!.listen((event) {
+        if (event == RawSocketEvent.read) {
+          final dg = _udpSocket!.receive();
+          if (dg == null) return;
+          try {
+            final msg = jsonDecode(utf8.decode(dg.data)) as Map<String, dynamic>;
+            if (msg['susemon'] == true) {
+              final ip = msg['ip'] as String? ?? '';
+              if (ip.isNotEmpty && ip != _detectedIp && mounted) {
+                setState(() => _detectedIp = ip);
+                // Auto-fill jika field kosong
+                if (_ipCtrl.text.isEmpty) _ipCtrl.text = ip;
+              }
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (_) {
+      // UDP tidak tersedia di platform ini — tidak masalah
+    }
   }
 
   @override
   void dispose() {
     _ipCtrl.dispose();
     _codeCtrl.dispose();
+    _udpSocket?.close();
     super.dispose();
   }
 
@@ -298,7 +333,34 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 8),
           _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
-          _hintRow('Jaringan', '10.20.10.254  ·  SUSEMON2026'),
+          _hintRow('Jaringan', _detectedIp.isNotEmpty ? '$_detectedIp  ·  SUSEMON2026' : 'Auto-detecting...'),
+          if (_detectedIp.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: TapScale(
+                onTap: () {
+                  setState(() => _ipCtrl.text = _detectedIp);
+                  HapticFeedback.selectionClick();
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.wifi_find_rounded, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Text('Gunakan IP terdeteksi: $_detectedIp',
+                        style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    const Icon(Icons.arrow_forward_rounded, size: 13, color: AppColors.primary),
+                  ]),
+                ),
+              ),
+            ),
         ],
       ),
     );

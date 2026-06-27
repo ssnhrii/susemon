@@ -253,17 +253,37 @@ void receiveDownlink() {
   }
 
   const char* targetNode = doc["node_id"];
-  if (!targetNode || String(targetNode) != NODE_ID) return;
+  // Terima jika node_id cocok ATAU broadcast "ALL" dari gateway
+  bool isForMe = targetNode &&
+                 (String(targetNode) == NODE_ID || String(targetNode) == "ALL");
+  if (!isForMe) return;
 
-  String prev = aiStatus;
-  aiStatus = doc["status"]     | "AMAN";
-  aiRisk   = doc["risk"]       | "LOW";
-  aiConf   = doc["confidence"] | 0;
-  lastDownlink = millis();
+  String prev   = aiStatus;
+  String rawSt  = doc["status"] | "AMAN";
+  aiRisk        = doc["risk"]   | "LOW";
+  aiConf        = doc["confidence"] | 0;
+  lastDownlink  = millis();
 
+  // Deteksi status khusus dari gateway
+  if (rawSt == "BACKEND_OFF") {
+    aiStatus = "BACKEND_OFF";
+    Serial.println("[NODE] Backend offline — menunggu...");
+    showSystemStatus("BACKEND", "OFFLINE");
+    setLEDWaiting();
+    return;
+  }
+  if (rawSt == "GATEWAY_OFF") {
+    aiStatus = "GATEWAY_OFF";
+    Serial.println("[NODE] Gateway offline — menunggu...");
+    showSystemStatus("GATEWAY", "OFFLINE");
+    setLEDWaiting();
+    return;
+  }
+
+  // Status normal dari AI
+  aiStatus = rawSt;
   Serial.printf("[AI] %s | %s | %d%% | RSSI=%d\n",
                 aiStatus.c_str(), aiRisk.c_str(), aiConf, lastRssi);
-
   applyAIStatus(prev);
   updateDisplay();
 }
@@ -296,7 +316,27 @@ void setLEDWaiting() {
   }
 }
 
-// ── OLED ──────────────────────────────────────────────────────────────────────
+// ── Tampilkan status sistem (backend/gateway off) di OLED ────────────────────
+void showSystemStatus(const char* system, const char* st) {
+  display.clearDisplay();
+  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
+  display.setCursor(2, 2);
+  display.print("SUSEMON  NODE " NODE_ID);
+  display.setTextColor(SSD1306_WHITE);
+  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
+  display.setTextSize(2);
+  display.setCursor(56, 16); display.print("!");
+  display.setTextSize(1);
+  display.setCursor(0, 34);
+  display.print(system); display.print(": "); display.print(st);
+  display.setCursor(0, 44); display.print("Menunggu koneksi...");
+  display.setCursor(0, 54);
+  display.print("T:"); display.print(String(temperature, 1));
+  display.print(" H:"); display.print(String((int)humidity)); display.print("%");
+  display.display();
+}
+
 void updateDisplay() {
   bool isOffline = (aiStatus != "MENUNGGU") &&
                    (millis() - lastDownlink > DOWNLINK_TIMEOUT);
@@ -330,6 +370,10 @@ void updateDisplay() {
   display.print("AI    : ");
   if (aiStatus == "MENUNGGU") {
     display.print("Menunggu...");
+  } else if (aiStatus == "BACKEND_OFF") {
+    display.print("BACKEND OFF");
+  } else if (aiStatus == "GATEWAY_OFF") {
+    display.print("GATEWAY OFF");
   } else if (isOffline) {
     display.print(aiStatus + "(off)");
   } else {
@@ -338,8 +382,11 @@ void updateDisplay() {
 
   display.setCursor(0, 55);
   display.print("Risk  : ");
-  if (aiStatus == "MENUNGGU") { display.print("--"); }
-  else { display.print(aiRisk); if (aiStatus == "BERBAHAYA") display.print(" !"); }
+  if (aiStatus == "MENUNGGU" || aiStatus == "BACKEND_OFF" || aiStatus == "GATEWAY_OFF") {
+    display.print("--");
+  } else {
+    display.print(aiRisk); if (aiStatus == "BERBAHAYA") display.print(" !");
+  }
 
   display.display();
 }
