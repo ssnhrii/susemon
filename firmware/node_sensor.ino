@@ -319,73 +319,108 @@ void setLEDWaiting() {
 // ── Tampilkan status sistem (backend/gateway off) di OLED ────────────────────
 void showSystemStatus(const char* system, const char* st) {
   display.clearDisplay();
-  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+
+  // Header tipis
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
-  display.setCursor(2, 2);
-  display.print("SUSEMON  NODE " NODE_ID);
-  display.setTextColor(SSD1306_WHITE);
-  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
-  display.setTextSize(2);
-  display.setCursor(56, 16); display.print("!");
   display.setTextSize(1);
-  display.setCursor(0, 34);
-  display.print(system); display.print(": "); display.print(st);
-  display.setCursor(0, 44); display.print("Menunggu koneksi...");
+  display.setCursor(2, 2);
+  display.print("SUSEMON  " NODE_ID);
+  display.setTextColor(SSD1306_WHITE);
+
+  // Icon seru besar di tengah
+  display.setTextSize(3);
+  display.setCursor(52, 16);
+  display.print("!");
+  display.setTextSize(1);
+
+  // Pesan status
+  display.setCursor(0, 42);
+  display.print(system);
+  display.print(" OFFLINE");
+
+  // Tetap tampilkan sensor
   display.setCursor(0, 54);
-  display.print("T:"); display.print(String(temperature, 1));
-  display.print(" H:"); display.print(String((int)humidity)); display.print("%");
+  display.print("T:");
+  display.print(String(temperature, 1));
+  display.print("C  H:");
+  display.print(String((int)humidity));
+  display.print("%");
+
   display.display();
 }
 
 void updateDisplay() {
-  bool isOffline = (aiStatus != "MENUNGGU") &&
+  bool isTimeout = (aiStatus != "MENUNGGU") &&
                    (millis() - lastDownlink > DOWNLINK_TIMEOUT);
+
+  // Jika status offline khusus, pakai layar khusus
+  if (aiStatus == "BACKEND_OFF") { showSystemStatus("BACKEND", ""); return; }
+  if (aiStatus == "GATEWAY_OFF") { showSystemStatus("GATEWAY", ""); return; }
 
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  // Header
-  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+  // ── Header ─────────────────────────────────────────────────────────────────
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
   display.setCursor(2, 2);
-  display.print("SUSEMON  NODE " NODE_ID);
+  display.print("SUSEMON  " NODE_ID);
+  // Indikator blink TX
   static bool blink = false; blink = !blink;
-  display.fillRect(119, 2, 7, 7, blink ? SSD1306_BLACK : SSD1306_WHITE);
+  if (blink) display.fillRect(116, 2, 8, 8, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  display.drawLine(0, 12, 127, 12, SSD1306_WHITE);
-  display.setCursor(0, 14);
-  display.print("Suhu  : "); display.print(String(temperature, 1)); display.print(" C");
-  display.setCursor(0, 24);
-  display.print("Humid : "); display.print(String((int)humidity)); display.print(" %");
+  // ── Suhu — besar di tengah ─────────────────────────────────────────────────
+  display.setTextSize(3);
+  int tempW = String(temperature, 1).length() * 18;
+  display.setCursor((128 - tempW - 12) / 2, 14);
+  display.print(String(temperature, 1));
+  display.setTextSize(1);
+  display.setCursor(128 - 14, 16);
+  display.print("o");   // derajat kecil
+  display.setCursor(128 - 10, 22);
+  display.print("C");
 
-  display.setCursor(0, 34);
-  display.print("LoRa  : TX="); display.print(txCount);
-  if (lastRssi != 0) { display.print(" RSSI="); display.print(lastRssi); }
-  else               { display.print(" Fail="); display.print(failCount); }
+  // ── Kelembapan ─────────────────────────────────────────────────────────────
+  display.setCursor(0, 40);
+  display.print("H:");
+  display.print(String((int)humidity));
+  display.print("%");
 
-  display.drawLine(0, 43, 127, 43, SSD1306_WHITE);
-  display.setCursor(0, 45);
-  display.print("AI    : ");
-  if (aiStatus == "MENUNGGU") {
-    display.print("Menunggu...");
-  } else if (aiStatus == "BACKEND_OFF") {
-    display.print("BACKEND OFF");
-  } else if (aiStatus == "GATEWAY_OFF") {
-    display.print("GATEWAY OFF");
-  } else if (isOffline) {
-    display.print(aiStatus + "(off)");
-  } else {
-    display.print(aiStatus); display.print(" "); display.print(aiConf); display.print("%");
+  // ── TX / RSSI ──────────────────────────────────────────────────────────────
+  display.setCursor(44, 40);
+  display.print("TX:");
+  display.print(txCount);
+  if (lastRssi != 0) {
+    display.setCursor(80, 40);
+    display.print(lastRssi);
+    display.print("dB");
   }
 
-  display.setCursor(0, 55);
-  display.print("Risk  : ");
-  if (aiStatus == "MENUNGGU" || aiStatus == "BACKEND_OFF" || aiStatus == "GATEWAY_OFF") {
-    display.print("--");
+  // ── Garis pemisah ──────────────────────────────────────────────────────────
+  display.drawLine(0, 50, 127, 50, SSD1306_WHITE);
+
+  // ── Status AI ──────────────────────────────────────────────────────────────
+  display.setCursor(0, 54);
+  if (aiStatus == "MENUNGGU") {
+    display.print("AI: Menunggu...");
+  } else if (isTimeout) {
+    display.print("AI: ");
+    display.print(aiStatus);
+    display.print(" (timeout)");
   } else {
-    display.print(aiRisk); if (aiStatus == "BERBAHAYA") display.print(" !");
+    // Status + confidence + risk
+    display.print(aiStatus);
+    display.print(" ");
+    display.print(aiConf);
+    display.print("% ");
+    display.print(aiRisk);
+    if (aiStatus == "BERBAHAYA") {
+      display.setCursor(114, 54);
+      display.print("!!");
+    }
   }
 
   display.display();
@@ -393,28 +428,50 @@ void updateDisplay() {
 
 void showSplash() {
   display.clearDisplay();
-  display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
-  display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(14, 8);  display.print("SUSEMON");
-  display.drawLine(10, 28, 118, 28, SSD1306_WHITE);
+
+  // Logo area — kotak rounded
+  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
+  display.setTextColor(SSD1306_BLACK);
   display.setTextSize(1);
-  display.setCursor(22, 33); display.print("Node " NODE_ID " | LoRa");
-  display.setCursor(14, 43); display.print("915MHz SF7 0x12");
-  display.setCursor(22, 53); display.print("PBL-TRPL412 " FW_VERSION);
+  display.setCursor(20, 2);
+  display.print("SUSEMON  NODE " NODE_ID);
+  display.setTextColor(SSD1306_WHITE);
+
+  // Nama besar
+  display.setTextSize(2);
+  display.setCursor(8, 16);
+  display.print("SUSEMON");
+  display.setTextSize(1);
+
+  // Garis tipis
+  display.drawLine(8, 32, 120, 32, SSD1306_WHITE);
+
+  // Info singkat
+  display.setCursor(8, 36);
+  display.print("LoRa 915MHz  SF7");
+  display.setCursor(8, 46);
+  display.print("SyncWord: 0x12");
+  display.setCursor(8, 56);
+  display.print(FW_VERSION "  PBL-TRPL412");
+
   display.display();
-  delay(2500);
+  delay(2000);
 }
 
 void showError(String msg) {
   display.clearDisplay();
   display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
-  display.setCursor(2, 2); display.print("!! ERROR !!");
+  display.setTextSize(1);
+  display.setCursor(2, 2);
+  display.print("ERROR  NODE " NODE_ID);
   display.setTextColor(SSD1306_WHITE);
-  display.drawRect(0, 14, 128, 50, SSD1306_WHITE);
-  display.setCursor(4, 20); display.print(msg);
+  display.setTextSize(2);
+  display.setCursor(50, 18);
+  display.print("X");
+  display.setTextSize(1);
+  display.setCursor(4, 44);
+  display.print(msg);
   display.display();
 }
 
