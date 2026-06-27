@@ -31,6 +31,22 @@
 
 #include "gateway_config.h"
 
+// ── Fallback jika gateway_config.h tidak ditemukan ───────────────────────────
+// Jalankan start_susemon.bat untuk generate gateway_config.h dengan IP yang benar
+#ifndef GATEWAY_CONFIG_H
+  #define WIFI_SSID_DEFAULT   "IoT_Susemon"
+  #define WIFI_PASS_DEFAULT   "12345678"
+  #define MQTT_SERVER_DEFAULT "127.0.0.1"
+  #define MQTT_PORT_DEFAULT   1883
+  #define MQTT_USER_DEFAULT   "susemon"
+  #define MQTT_PASS_DEFAULT   "Susemon2026mqtt"
+  #define TOPIC_UP_DEFAULT    "sensor/data"
+  #define TOPIC_DOWN_DEFAULT  "sensor/ai_result"
+  #define BACKEND_HEALTH_URL  "http://127.0.0.1:3000/api/health"
+  #define BACKEND_IP          "127.0.0.1"
+  #define BACKEND_PORT        3000
+#endif
+
 // ── Pin ───────────────────────────────────────────────────────────────────────
 #define LORA_SCK   5
 #define LORA_MISO  19
