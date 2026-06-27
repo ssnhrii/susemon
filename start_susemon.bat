@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title SUSEMON v2.2 - Smart Auto-Start
 color 0A
 
@@ -13,11 +14,12 @@ set PROJECT_DIR=C:\laragon\www\susemon
 set BACKEND_DIR=%PROJECT_DIR%\backend
 set MOBILE_DIR=%PROJECT_DIR%\mobile
 set FIRMWARE_DIR=%PROJECT_DIR%\firmware
+set GATEWAY_DIR=%PROJECT_DIR%\firmware\gateway
 set MOSQUITTO_EXE=C:\Program Files\mosquitto\mosquitto.exe
 set MOSQUITTO_PASSWD=C:\Program Files\mosquitto\mosquitto_passwd.exe
 set MQTT_PASSWD_FILE=%BACKEND_DIR%\mosquitto_config\passwd
 set MQTT_USER=susemon
-set MQTT_PASS=Susemon2026mqtt
+set MQTT_PASS=susemon123
 
 :: ── Auto-detect Python (venv prioritas) ──────────────────────────────────────
 set PYTHON_EXE=
@@ -44,18 +46,30 @@ pause & exit /b 1
 :PYTHON_OK
 echo.
 
-:: ── Auto-detect IP Laptop ─────────────────────────────────────────────────────
+:: ── Auto-detect IP Laptop (prioritas Ethernet, skip Wi-Fi & VPN) ─────────────
 set LOCAL_IP=
-for /f "delims=" %%i in ('"%PYTHON_EXE%" -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.connect((chr(56)+chr(46)+chr(56)+chr(46)+chr(56)+chr(46)+chr(56),80)); print(s.getsockname()[0]); s.close()" 2^>nul') do set LOCAL_IP=%%i
-if "%LOCAL_IP%"=="" (
-    for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0.1"') do (
-        if "!LOCAL_IP!"=="" set LOCAL_IP=%%a
+:: Coba ambil IP Ethernet dulu
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0.1" ^| findstr /v "169.254"') do (
+    set CANDIDATE=%%a
+    set CANDIDATE=!CANDIDATE: =!
+    :: Skip IP Wi-Fi range 192.168.x.x dan Tailscale 100.x.x.x — pakai Ethernet 10.x.x.x
+    echo !CANDIDATE! | findstr /r "^10\." >nul 2>&1
+    if not errorlevel 1 (
+        if "!LOCAL_IP!"=="" set LOCAL_IP=!CANDIDATE!
     )
-    set LOCAL_IP=%LOCAL_IP: =%
+)
+:: Fallback: ambil IP apapun yang bukan loopback jika Ethernet tidak ada
+if "%LOCAL_IP%"=="" (
+    for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4" ^| findstr /v "127.0.0.1" ^| findstr /v "169.254" ^| findstr /v "100\."') do (
+        if "!LOCAL_IP!"=="" (
+            set LOCAL_IP=%%a
+            set LOCAL_IP=!LOCAL_IP: =!
+        )
+    )
 )
 if "%LOCAL_IP%"=="" set LOCAL_IP=127.0.0.1
 
-echo [IP]   IP Laptop terdeteksi: %LOCAL_IP%
+echo [IP]   IP terdeteksi: %LOCAL_IP%
 echo.
 
 :: ── Update .env dengan IP yang benar ─────────────────────────────────────────
@@ -109,7 +123,7 @@ echo [ENV]  backend\.env diperbarui dengan IP: %LOCAL_IP%
 echo.
 
 :: ── Generate gateway_config.h untuk Arduino ──────────────────────────────────
-echo [FW]   Menulis firmware\gateway_config.h ...
+echo [FW]   Menulis firmware\gateway\gateway_config.h ...
 (
 echo // Auto-generated oleh start_susemon.bat — DO NOT EDIT MANUAL
 echo // Regenerate: jalankan start_susemon.bat di laptop baru
@@ -121,7 +135,7 @@ echo // WiFi — ubah sesuai jaringan lokal Anda
 echo #define WIFI_SSID_DEFAULT    "IoT_Susemon"
 echo #define WIFI_PASS_DEFAULT    "12345678"
 echo.
-echo // MQTT Server — auto-detected IP laptop
+echo // MQTT Server — auto-detected IP laptop (Ethernet)
 echo #define MQTT_SERVER_DEFAULT  "%LOCAL_IP%"
 echo #define MQTT_PORT_DEFAULT    1883
 echo #define MQTT_USER_DEFAULT    "%MQTT_USER%"
@@ -137,8 +151,8 @@ echo #define BACKEND_IP           "%LOCAL_IP%"
 echo #define BACKEND_PORT         3000
 echo.
 echo #endif // GATEWAY_CONFIG_H
-) > "%FIRMWARE_DIR%\gateway_config.h"
-echo [FW]   firmware\gateway_config.h diperbarui dengan IP: %LOCAL_IP%
+) > "%GATEWAY_DIR%\gateway_config.h"
+echo [FW]   firmware\gateway\gateway_config.h diperbarui dengan IP: %LOCAL_IP%
 echo.
 
 :: ── Update susemon_forward.sh dengan IP terbaru ───────────────────────────────
@@ -176,13 +190,11 @@ if not exist "%MOSQUITTO_EXE%" (
 )
 echo [MQTT] Mosquitto ditemukan.
 if not exist "%BACKEND_DIR%\mosquitto_config" mkdir "%BACKEND_DIR%\mosquitto_config"
-if not exist "%MQTT_PASSWD_FILE%" (
-    echo [MQTT] Membuat password file...
-    "%MOSQUITTO_PASSWD%" -c -b "%MQTT_PASSWD_FILE%" %MQTT_USER% %MQTT_PASS% >NUL 2>&1
-    if exist "%MQTT_PASSWD_FILE%" (echo [MQTT] Password file OK.) else (echo [MQTT] Gagal - lanjut anonymous.)
-) else (
-    echo [MQTT] Password file sudah ada.
-)
+
+:: Selalu rebuild passwd file agar sinkron dengan MQTT_PASS di atas
+echo [MQTT] Membuat password file (user: %MQTT_USER%)...
+"%MOSQUITTO_PASSWD%" -c -b "%MQTT_PASSWD_FILE%" %MQTT_USER% %MQTT_PASS% >NUL 2>&1
+if exist "%MQTT_PASSWD_FILE%" (echo [MQTT] Password file OK.) else (echo [MQTT] Gagal buat passwd - lanjut anonymous.)
 echo [MQTT] Menjalankan Mosquitto di port 1883...
 start "SUSEMON - MQTT Broker" /D "%BACKEND_DIR%" "%MOSQUITTO_EXE%" -c mosquitto.conf -v
 timeout /t 3 /nobreak >NUL
@@ -210,8 +222,23 @@ echo.
 
 :: ── 4. Jalankan Flutter App ───────────────────────────────────────────────────
 echo [APP]  Menjalankan Flutter App (Windows desktop)...
-start "SUSEMON - Flutter App" cmd /k "cd /d "%MOBILE_DIR%" && flutter run -d windows"
+set FLUTTER_EXE=
+if exist "C:\src\flutter\bin\flutter.bat"                    set FLUTTER_EXE=C:\src\flutter\bin\flutter.bat
+if "!FLUTTER_EXE!"=="" if exist "%USERPROFILE%\flutter\bin\flutter.bat" set FLUTTER_EXE=%USERPROFILE%\flutter\bin\flutter.bat
+if "!FLUTTER_EXE!"=="" if exist "C:\flutter\bin\flutter.bat"            set FLUTTER_EXE=C:\flutter\bin\flutter.bat
+if "!FLUTTER_EXE!"=="" (
+    where flutter >NUL 2>&1
+    if not errorlevel 1 set FLUTTER_EXE=flutter
+)
+if "!FLUTTER_EXE!"=="" (
+    echo [APP]  Flutter tidak ditemukan! Tambahkan ke PATH atau install di C:\src\flutter
+    echo [APP]  Download: https://docs.flutter.dev/get-started/install/windows
+    goto :SKIP_FLUTTER
+)
+echo [APP]  Flutter: !FLUTTER_EXE!
+start "SUSEMON - Flutter App" cmd /k "cd /d %MOBILE_DIR% && "!FLUTTER_EXE!" run -d windows"
 echo [APP]  Flutter started.
+:SKIP_FLUTTER
 echo.
 
 :: ── 5. Info ───────────────────────────────────────────────────────────────────
@@ -235,9 +262,10 @@ echo     IP Address  : 127.0.0.1
 echo     Access Code : ADMIN123
 echo.
 echo   ── Upload Firmware Arduino ─────────────
-echo   File config    : firmware\gateway_config.h
+echo   File config    : firmware\gateway\gateway_config.h
 echo   MQTT Server    : %LOCAL_IP%
-echo   Upload ke gateway, lalu power on.
+echo   Buka Arduino IDE, File > Open: firmware\gateway\gateway.ino
+echo   Upload ke gateway TTGO, lalu power on.
 echo.
 echo   ── Konfigurasi Dragino LG02 ────────────
 echo   MQTT Server    : %LOCAL_IP%
