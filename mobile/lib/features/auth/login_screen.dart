@@ -175,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 8),
           _buildTextField(
             controller: _ipCtrl,
-            hint: 'Contoh: 192.168.1.100',
+            hint: '10.130.1.206  atau  127.0.0.1',
             icon: Icons.router_outlined,
             obscure: false,
           ),
@@ -333,7 +333,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 8),
           _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
-          _hintRow('Jaringan', _detectedIp.isNotEmpty ? '$_detectedIp  ·  SUSEMON2026' : 'Auto-detecting...'),
+          _hintRow('Jaringan', _detectedIp.isNotEmpty
+              ? '$_detectedIp  ·  SUSEMON2026'
+              : '10.130.1.206  ·  SUSEMON2026'),
           if (_detectedIp.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
