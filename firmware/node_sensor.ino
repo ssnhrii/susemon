@@ -359,67 +359,77 @@ void updateDisplay() {
   if (aiStatus == "GATEWAY_OFF") { showSystemStatus("GATEWAY", ""); return; }
 
   display.clearDisplay();
-  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  // ── Header ─────────────────────────────────────────────────────────────────
-  display.fillRect(0, 0, 128, 12, SSD1306_WHITE);
+  // ── Header (baris 0-11) ────────────────────────────────────────────────────
+  display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK);
+  display.setTextSize(1);
   display.setCursor(2, 2);
-  display.print("SUSEMON  " NODE_ID);
-  // Indikator blink TX
+  display.print("SUSEMON ");
+  display.print(NODE_ID);
+  // Dot blink kanan atas (indikator aktif)
   static bool blink = false; blink = !blink;
-  if (blink) display.fillRect(116, 2, 8, 8, SSD1306_BLACK);
+  if (blink) display.fillRect(119, 2, 7, 7, SSD1306_WHITE);
+  else       display.fillRect(119, 2, 7, 7, SSD1306_BLACK);
   display.setTextColor(SSD1306_WHITE);
 
-  // ── Suhu — besar di tengah ─────────────────────────────────────────────────
+  // ── Suhu besar — textSize 3, setiap char = 18px lebar, 24px tinggi ────────
+  // Baris Y=13, tinggi char = 24px → batas bawah Y=37
+  // Format: "36.7*C" — tanda derajat pakai char khusus, C pisah kecil
+  String tempStr = String(temperature, 1);  // "36.7"
+  // Lebar total: jumlah char × 18px
+  int tempPx = tempStr.length() * 18;       // misal "36.7" = 4 char = 72px
+  int tempX  = (128 - tempPx - 18) / 2;     // sisakan 18px untuk "°C"
+  if (tempX < 0) tempX = 0;
+
   display.setTextSize(3);
-  int tempW = String(temperature, 1).length() * 18;
-  display.setCursor((128 - tempW - 12) / 2, 14);
-  display.print(String(temperature, 1));
+  display.setCursor(tempX, 13);
+  display.print(tempStr);
+
+  // "°C" di kanan — pakai textSize 1 agar tidak kepotong
   display.setTextSize(1);
-  display.setCursor(128 - 14, 16);
-  display.print("o");   // derajat kecil
-  display.setCursor(128 - 10, 22);
+  display.setCursor(tempX + tempPx + 2, 14);
+  display.print((char)247);   // karakter ° di font Adafruit GFX
+  display.setCursor(tempX + tempPx + 2, 22);
   display.print("C");
 
-  // ── Kelembapan ─────────────────────────────────────────────────────────────
-  display.setCursor(0, 40);
+  // ── Baris tengah: Humid + TX + RSSI (Y=38) ────────────────────────────────
+  display.setTextSize(1);
+  display.setCursor(0, 38);
   display.print("H:");
-  display.print(String((int)humidity));
+  display.print((int)humidity);
   display.print("%");
 
-  // ── TX / RSSI ──────────────────────────────────────────────────────────────
-  display.setCursor(44, 40);
+  display.setCursor(48, 38);
   display.print("TX:");
   display.print(txCount);
+
   if (lastRssi != 0) {
-    display.setCursor(80, 40);
+    display.setCursor(86, 38);
     display.print(lastRssi);
     display.print("dB");
   }
 
-  // ── Garis pemisah ──────────────────────────────────────────────────────────
-  display.drawLine(0, 50, 127, 50, SSD1306_WHITE);
+  // ── Garis pemisah (Y=48) ──────────────────────────────────────────────────
+  display.drawLine(0, 48, 127, 48, SSD1306_WHITE);
 
-  // ── Status AI ──────────────────────────────────────────────────────────────
-  display.setCursor(0, 54);
+  // ── Status AI (Y=52) ──────────────────────────────────────────────────────
+  display.setCursor(0, 52);
   if (aiStatus == "MENUNGGU") {
-    display.print("AI: Menunggu...");
+    display.print("Menunggu AI...");
   } else if (isTimeout) {
-    display.print("AI: ");
     display.print(aiStatus);
     display.print(" (timeout)");
   } else {
-    // Status + confidence + risk
+    // "AMAN 91% LOW" atau "BERBAHAYA 85% HIGH !!"
     display.print(aiStatus);
     display.print(" ");
     display.print(aiConf);
     display.print("% ");
     display.print(aiRisk);
     if (aiStatus == "BERBAHAYA") {
-      display.setCursor(114, 54);
-      display.print("!!");
+      display.print(" !!");
     }
   }
 
