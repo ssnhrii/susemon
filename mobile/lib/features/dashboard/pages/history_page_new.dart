@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
 import '../../../shared/widgets/interactive.dart';
-import '../../../shared/widgets/mesh_background.dart';
 
 class HistoryPageNew extends StatefulWidget {
   const HistoryPageNew({super.key});
@@ -16,727 +13,1053 @@ class HistoryPageNew extends StatefulWidget {
   State<HistoryPageNew> createState() => _HistoryPageNewState();
 }
 
-class _HistoryPageNewState extends State<HistoryPageNew> {
-  String _nodeId = '';
-  String _period = '24h';
+class _HistoryPageNewState extends State<HistoryPageNew>
+    with SingleTickerProviderStateMixin {
+  late TabController _chartTab;
+  String _period = '30d';
   List<SensorReading> _history = [];
   bool _loading = false;
-  List<String> _nodes = [];
-
-  static const _periods = {
-    '1h': '1 Jam',
-    '6h': '6 Jam',
-    '24h': '24 Jam',
-    '7d': '7 Hari',
-    '30d': '30 Hari',
-  };
+  String _searchNode = '';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final sensor = context.read<SensorProvider>();
-      final ids = sensor.latest.map((r) => r.nodeId).toList();
-      if (ids.isNotEmpty) {
-        setState(() {
-          _nodes = ids;
-          _nodeId = ids.first;
-        });
-        _fetch();
-      } else {
-        sensor.refresh().then((_) {
-          if (!mounted) return;
-          final freshIds = sensor.latest.map((r) => r.nodeId).toList();
-          if (freshIds.isNotEmpty) {
-            setState(() {
-              _nodes = freshIds;
-              _nodeId = freshIds.first;
-            });
-            _fetch();
-          }
-        });
-      }
-    });
+    _chartTab = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetch());
+  }
+
+  @override
+  void dispose() {
+    _chartTab.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
-    if (_nodeId.isEmpty) return;
+    final sensor = context.read<SensorProvider>();
+    final ids = sensor.latest.map((r) => r.nodeId).toList();
+    if (ids.isEmpty) return;
     setState(() => _loading = true);
     try {
-      final data = await context.read<SensorProvider>().getHistory(
-        _nodeId,
-        period: _period,
-        limit: 200,
+      final all = await Future.wait(
+        ids.map((id) => sensor.getHistory(id, period: _period, limit: 50)),
       );
-      if (mounted) setState(() => _history = data);
-    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal memuat: $e'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+        setState(
+          () =>
+              _history = all.expand((x) => x).toList()
+                ..sort((a, b) => a.timestamp.compareTo(b.timestamp)),
         );
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _exportCsv() async {
-    if (_nodeId.isEmpty) return;
-    final url = context.read<SensorProvider>().getExportUrl(
-      _nodeId,
-      period: _period,
-    );
-    try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tidak bisa membuka URL export'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
+  String _formatDate(DateTime d) {
+    const mon = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    return '${d.day.toString().padLeft(2, '0')} ${mon[d.month]} ${d.year}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final stats = context.watch<SensorProvider>().stats;
+    final sensor = context.watch<SensorProvider>();
+    final stats = sensor.stats;
+    final latest = sensor.latest;
+    final avgTemp = stats.avgTemp;
+    final avgHum = stats.avgHumidity;
+    final notifCount = sensor.problemCount;
+    final uptime = latest.isEmpty
+        ? 0.0
+        : latest.where((r) => r.status == 'AMAN').length / latest.length * 100;
+    final now = DateTime.now();
+    final start = now.subtract(const Duration(days: 30));
+    final dateRange = '${_formatDate(start)} - ${_formatDate(now)}';
+
+    // Filtered for table
+    final tableData = latest
+        .where(
+          (r) =>
+              _searchNode.isEmpty ||
+              r.nodeId.toLowerCase().contains(_searchNode.toLowerCase()) ||
+              (r.location ?? '').toLowerCase().contains(
+                _searchNode.toLowerCase(),
+              ),
+        )
+        .toList();
+
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
-      body: MeshBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: _loading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
-                          strokeWidth: 2,
+      backgroundColor: const Color(0xFFF2F5FA),
+      body: Column(
+        children: [
+          // ── AppBar ──────────────────────────────────────────────────────
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF0058BE),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.menu_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Laporan',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Kembali button
+                    GestureDetector(
+                      onTap: () => HapticFeedback.lightImpact(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
                         ),
-                      )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildSummaryCards(stats),
-                            const SizedBox(height: 16),
-                            if (_history.isNotEmpty) ...[
-                              _buildChartCard(),
-                              const SizedBox(height: 16),
-                              _buildLogCard(),
-                            ] else
-                              _buildEmpty(),
-                            const SizedBox(height: 24),
+                            Icon(
+                              Icons.arrow_back_ios_rounded,
+                              size: 11,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 3),
+                            Text(
+                              'Kembali',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() => Container(
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.7),
-      border: Border(
-        bottom: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-      ),
-    ),
-    child: Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.bar_chart_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Laporan',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primary,
                     ),
-                  ),
-                  Text(
-                    'Data historis & analitik sensor',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.onSurfaceVariant.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              if (_nodeId.isNotEmpty)
-                TapScale(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    _exportCsv();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: AppColors.success.withValues(alpha: 0.25),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF1D4ED8),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: Colors.white,
+                        size: 16,
                       ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await _fetch();
+                await sensor.refresh();
+              },
+              color: AppColors.primary,
+              backgroundColor: Colors.white,
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                       children: [
-                        Icon(
-                          Icons.download_rounded,
-                          size: 14,
-                          color: AppColors.success,
+                        // ── Date range + export buttons ──────────────────────
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE8EAF0)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 14,
+                                color: AppColors.textDim,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  dateRange,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 16,
+                                color: AppColors.textDim,
+                              ),
+                            ],
+                          ),
                         ),
-                        SizedBox(width: 5),
-                        Text(
-                          'CSV',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.success,
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            // Excel button
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => HapticFeedback.lightImpact(),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFFD1D5DB),
+                                    ),
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.table_chart_rounded,
+                                        size: 15,
+                                        color: Color(0xFF16A34A),
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Excel',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF16A34A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Cetak PDF button
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => HapticFeedback.lightImpact(),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.picture_as_pdf_rounded,
+                                        size: 15,
+                                        color: Colors.white,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Cetak PDF',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // ── 4 Stat Cards ────────────────────────────────────
+                        _StatCard(
+                          label: 'RATA-RATA SUHU',
+                          value: avgTemp > 0
+                              ? '${avgTemp.toStringAsFixed(1)}\u00B0C'
+                              : '--',
+                          sub: avgTemp > 0
+                              ? '\u25B2 1.2% dari target'
+                              : 'Menunggu data',
+                          subColor: AppColors.danger,
+                          icon: Icons.thermostat_rounded,
+                          iconColor: const Color(0xFF0EA5E9),
+                        ),
+                        const SizedBox(height: 10),
+                        _StatCard(
+                          label: 'RATA-RATA KELEMBAPAN',
+                          value: avgHum > 0
+                              ? '${avgHum.toStringAsFixed(1)}%'
+                              : '--',
+                          sub: avgHum > 0
+                              ? '\u25BC 0.1% vs hari lalu'
+                              : 'Menunggu data',
+                          subColor: AppColors.success,
+                          icon: Icons.water_drop_rounded,
+                          iconColor: const Color(0xFF06B6D4),
+                        ),
+                        const SizedBox(height: 10),
+                        _StatCard(
+                          label: 'NOTIFIKASI SISTEM',
+                          value: '$notifCount',
+                          sub: notifCount == 0
+                              ? '\u2713 Semua terselesaikan'
+                              : '$notifCount notifikasi aktif',
+                          subColor: notifCount == 0
+                              ? AppColors.success
+                              : AppColors.warning,
+                          icon: Icons.notifications_rounded,
+                          iconColor: AppColors.primary,
+                        ),
+                        const SizedBox(height: 10),
+                        _StatCard(
+                          label: 'UPTIME SENSOR',
+                          value: '${uptime.toStringAsFixed(1)}%',
+                          sub: uptime >= 99
+                              ? '\u26A1 Kinerja Stabil'
+                              : 'Periksa sensor offline',
+                          subColor: uptime >= 99
+                              ? AppColors.primary
+                              : AppColors.warning,
+                          icon: Icons.shield_outlined,
+                          iconColor: AppColors.success,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // ── Visualisasi Tren Bulanan ─────────────────────────
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE8EAF0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Visualisasi Tren Bulanan',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Data tren sensor selama periode dipilih',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textDim,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Tab Suhu / Kelembapan
+                              TabBar(
+                                controller: _chartTab,
+                                isScrollable: false,
+                                labelStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                unselectedLabelStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                labelColor: AppColors.primary,
+                                unselectedLabelColor: AppColors.textDim,
+                                indicatorColor: AppColors.primary,
+                                indicatorWeight: 2.5,
+                                indicatorSize: TabBarIndicatorSize.tab,
+                                tabs: const [
+                                  Tab(text: 'Suhu'),
+                                  Tab(text: 'Kelembapan'),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                height: 180,
+                                child: TabBarView(
+                                  controller: _chartTab,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  children: [
+                                    _buildLineChart(useTemp: true),
+                                    _buildLineChart(useTemp: false),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              // X-axis labels
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children:
+                                    ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun']
+                                        .map(
+                                          (m) => Text(
+                                            m,
+                                            style: const TextStyle(
+                                              fontSize: 8,
+                                              color: AppColors.textDim,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // ── Analisis Cerdas AI ───────────────────────────────
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE8EAF0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: const [
+                                  Icon(
+                                    Icons.psychology_rounded,
+                                    color: AppColors.primary,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Analisis Cerdas AI',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Data analisis efisiensi sensor terkini.',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textDim,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              // AI insight text
+                              RichText(
+                                text: TextSpan(
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                    height: 1.5,
+                                  ),
+                                  children: [
+                                    const TextSpan(
+                                      text: 'Mendeteksi anomali pada ',
+                                    ),
+                                    TextSpan(
+                                      text: 'Zone B (Rak 04)',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const TextSpan(
+                                      text: '. Efisiensi pendinginan menurun ',
+                                    ),
+                                    TextSpan(
+                                      text: '12%',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.danger,
+                                      ),
+                                    ),
+                                    const TextSpan(text: '.'),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              // Rekomendasi box
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8F9FC),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFFE8EAF0),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Text(
+                                          'REKOMENDASI',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.textDim,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.danger.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'PRIORITAS',
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.danger,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      'Jadwalkan pembersihan filter AC unit-03 dalam 24 jam ke depan.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              // Lihat Laporan Lengkap button
+                              GestureDetector(
+                                onTap: () => HapticFeedback.lightImpact(),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      'Lihat Laporan Lengkap',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // ── Detail Statistik Sensor ──────────────────────────
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE8EAF0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  10,
+                                ),
+                                child: const Text(
+                                  'Detail Statistik Sensor',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              // Search
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  10,
+                                ),
+                                child: Container(
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF4F6FA),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFE8EAF0),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const SizedBox(width: 10),
+                                      Icon(
+                                        Icons.search_rounded,
+                                        size: 15,
+                                        color: AppColors.textDim.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          onChanged: (v) =>
+                                              setState(() => _searchNode = v),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                          decoration: const InputDecoration(
+                                            hintText: 'Cari ID atau Lokasi...',
+                                            hintStyle: TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textDim,
+                                            ),
+                                            border: InputBorder.none,
+                                            isDense: true,
+                                            contentPadding: EdgeInsets.zero,
+                                          ),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
+                                        ),
+                                        child: Icon(
+                                          Icons.tune_rounded,
+                                          size: 15,
+                                          color: AppColors.textDim.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Table header
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                color: const Color(0xFFF8F9FC),
+                                child: const Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
+                                      child: Text(
+                                        'SENSOR\nID',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textDim,
+                                          letterSpacing: 0.4,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 3,
+                                      child: Text(
+                                        'LOKASI\nPENEMPATAN',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textDim,
+                                          letterSpacing: 0.4,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        'AVG.\nTEMP',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textDim,
+                                          letterSpacing: 0.4,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Divider(
+                                height: 1,
+                                color: Color(0xFFEEF0F8),
+                              ),
+                              if (tableData.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Center(
+                                    child: Text(
+                                      'Tidak ada data',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textDim,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...tableData
+                                    .take(8)
+                                    .map((r) => _SensorTableRow(reading: r)),
+                              // Footer
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Center(
+                                  child: Text(
+                                    'Menampilkan ${tableData.take(8).length} dari ${tableData.length} sensor aktif',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textDim,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _nodes.isEmpty
-                    ? _selectorPlaceholder()
-                    : _dropdown(
-                        value: _nodeId,
-                        items: {for (var n in _nodes) n: 'Node $n'},
-                        onChanged: (v) {
-                          setState(() => _nodeId = v!);
-                          _fetch();
-                        },
-                      ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _dropdown(
-                  value: _period,
-                  items: _periods,
-                  onChanged: (v) {
-                    setState(() => _period = v!);
-                    _fetch();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _selectorPlaceholder() => Container(
-    height: 42,
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: AppColors.outlineVariant.withValues(alpha: 0.4),
-      ),
-    ),
-    alignment: Alignment.centerLeft,
-    child: Text(
-      'Memuat node...',
-      style: TextStyle(color: AppColors.textDim, fontSize: 12),
-    ),
-  );
-
-  Widget _dropdown({
-    required String value,
-    required Map<String, String> items,
-    required Function(String?) onChanged,
-  }) => Container(
-    height: 42,
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: AppColors.outlineVariant.withValues(alpha: 0.4),
-      ),
-    ),
-    child: DropdownButton<String>(
-      value: value,
-      isExpanded: true,
-      dropdownColor: Colors.white,
-      underline: const SizedBox(),
-      icon: const Icon(
-        Icons.keyboard_arrow_down_rounded,
-        color: AppColors.textDim,
-        size: 18,
-      ),
-      style: const TextStyle(
-        color: AppColors.onSurface,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
-      items: items.entries
-          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-          .toList(),
-      onChanged: onChanged,
-    ),
-  );
-
-  Widget _buildSummaryCards(SensorStats stats) {
-    final items = [
-      [
-        '${stats.avgTemp.toStringAsFixed(1)}°C',
-        'Rata-rata Suhu',
-        AppColors.primary,
-        Icons.thermostat_rounded,
-      ],
-      [
-        '${stats.maxTemp.toStringAsFixed(1)}°C',
-        'Tertinggi',
-        AppColors.danger,
-        Icons.arrow_upward_rounded,
-      ],
-      [
-        '${stats.minTemp.toStringAsFixed(1)}°C',
-        'Terendah',
-        AppColors.success,
-        Icons.arrow_downward_rounded,
-      ],
-      [
-        '${stats.dangerCount + stats.warningCount}',
-        'Total Alert',
-        AppColors.warning,
-        Icons.notifications_rounded,
-      ],
-    ];
-    return GridView.count(
-      crossAxisCount: 2,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 2.2,
-      children: items
-          .map(
-            (item) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: AppColors.glassCard(
-                radius: 14,
-                borderColor: (item[2] as Color).withValues(alpha: 0.15),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: (item[2] as Color).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      item[3] as IconData,
-                      size: 16,
-                      color: item[2] as Color,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item[0] as String,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: item[2] as Color,
-                        ),
-                      ),
-                      Text(
-                        item[1] as String,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: AppColors.textDim,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
             ),
-          )
-          .toList(),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildChartCard() {
-    if (_history.isEmpty) return const SizedBox.shrink();
-    final temps = _history.map((r) => r.temperature).toList();
-    final minT = (temps.reduce((a, b) => a < b ? a : b) - 2).clamp(0.0, 100.0);
-    final maxT = (temps.reduce((a, b) => a > b ? a : b) + 2).clamp(0.0, 100.0);
-    final tempSpots = _history
-        .asMap()
-        .entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.temperature))
-        .toList();
-    final humSpots = _history
-        .asMap()
-        .entries
-        .map(
-          (e) => FlSpot(
-            e.key.toDouble(),
-            e.value.humidity * (maxT - minT) / 100 + minT,
+  Widget _buildLineChart({required bool useTemp}) {
+    if (_history.isEmpty) {
+      return const Center(
+        child: Text(
+          'Belum ada data',
+          style: TextStyle(fontSize: 11, color: AppColors.textDim),
+        ),
+      );
+    }
+    final color = useTemp ? AppColors.primary : const Color(0xFF0EA5E9);
+    final spots = _history.asMap().entries.map((e) {
+      final val = useTemp ? e.value.temperature : e.value.humidity;
+      return FlSpot(e.key.toDouble(), val);
+    }).toList();
+    final yVals = spots.map((s) => s.y).toList();
+    final minY = (yVals.reduce((a, b) => a < b ? a : b) - 3).clamp(0.0, 100.0);
+    final maxY = yVals.reduce((a, b) => a > b ? a : b) + 3;
+    return LineChart(
+      LineChartData(
+        minY: minY,
+        maxY: maxY,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: (maxY - minY) / 4,
+          getDrawingHorizontalLine: (_) =>
+              const FlLine(color: Color(0xFFF0F2FA), strokeWidth: 1),
+        ),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 28,
+              getTitlesWidget: (v, _) => Text(
+                '${v.toInt()}',
+                style: const TextStyle(fontSize: 8, color: AppColors.textDim),
+              ),
+            ),
           ),
-        )
-        .toList();
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          bottomTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            curveSmoothness: 0.3,
+            color: color,
+            barWidth: 2.5,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0.25),
+                  color.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppColors.glassCard(radius: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+// ── _StatCard ─────────────────────────────────────────────────────────────────
+class _StatCard extends StatelessWidget {
+  final String label, value, sub;
+  final Color subColor, iconColor;
+  final IconData icon;
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.sub,
+    required this.subColor,
+    required this.iconColor,
+    required this.icon,
+  });
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFFE8EAF0)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Visualisasi Tren',
-                style: TextStyle(
-                  fontSize: 13,
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 9,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.onSurface,
+                  color: AppColors.textDim,
+                  letterSpacing: 0.4,
                 ),
               ),
-              const Spacer(),
-              _legend(AppColors.primary, 'Suhu'),
-              const SizedBox(width: 12),
-              _legend(const Color(0xFF0EA5E9), 'Kelembapan'),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sub,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: subColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 180,
-            child: LineChart(
-              LineChartData(
-                minY: minT,
-                maxY: maxT,
-                clipData: const FlClipData.all(),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: AppColors.outlineVariant.withValues(alpha: 0.4),
-                    strokeWidth: 0.8,
+        ),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: iconColor),
+        ),
+      ],
+    ),
+  );
+}
+
+// ── _SensorTableRow ───────────────────────────────────────────────────────────
+class _SensorTableRow extends StatelessWidget {
+  final SensorReading reading;
+  const _SensorTableRow({required this.reading});
+  @override
+  Widget build(BuildContext context) {
+    final sc = AppColors.statusColor(reading.status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFEEF0F8))),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  reading.nodeId,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: sc,
                   ),
                 ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (v, _) => Text(
-                        '${v.toInt()}°',
-                        style: TextStyle(fontSize: 9, color: AppColors.textDim),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
+                Text(
+                  reading.status,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: sc.withValues(alpha: 0.8),
                   ),
                 ),
-                extraLinesData: ExtraLinesData(
-                  horizontalLines: [
-                    HorizontalLine(
-                      y: 35,
-                      color: AppColors.warning.withValues(alpha: 0.4),
-                      strokeWidth: 1,
-                      dashArray: [5, 4],
-                    ),
-                    HorizontalLine(
-                      y: 40,
-                      color: AppColors.danger.withValues(alpha: 0.4),
-                      strokeWidth: 1,
-                      dashArray: [5, 4],
-                    ),
-                  ],
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: tempSpots,
-                    isCurved: true,
-                    color: AppColors.primary,
-                    barWidth: 2.5,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, _, __, ___) {
-                        final idx = spot.x.toInt();
-                        if (idx < 0 || idx >= _history.length) {
-                          return FlDotCirclePainter(
-                            radius: 0,
-                            color: Colors.transparent,
-                            strokeWidth: 0,
-                          );
-                        }
-                        final r = _history[idx];
-                        if (r.status == 'AMAN') {
-                          return FlDotCirclePainter(
-                            radius: 0,
-                            color: Colors.transparent,
-                            strokeWidth: 0,
-                          );
-                        }
-                        return FlDotCirclePainter(
-                          radius: 4,
-                          color: AppColors.statusColor(r.status),
-                          strokeWidth: 2,
-                          strokeColor: Colors.white,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: AppColors.primary.withValues(alpha: 0.06),
-                    ),
-                  ),
-                  LineChartBarData(
-                    spots: humSpots,
-                    isCurved: true,
-                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.6),
-                    barWidth: 1.5,
-                    dotData: const FlDotData(show: false),
-                    dashArray: [4, 3],
-                    belowBarData: BarAreaData(show: false),
-                  ),
-                ],
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              reading.location?.isNotEmpty == true
+                  ? reading.location!
+                  : 'Data Center\nRak 01',
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${reading.temperature.toStringAsFixed(1)}\u00B0C',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: sc,
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${_history.length} data · ${_periods[_period]} · Node $_nodeId',
-            style: TextStyle(fontSize: 10, color: AppColors.textDim),
-          ),
         ],
       ),
     );
   }
-
-  Widget _legend(Color color, String label) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 12,
-        height: 3,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(2),
-        ),
-      ),
-      const SizedBox(width: 5),
-      Text(label, style: TextStyle(fontSize: 10, color: AppColors.textDim)),
-    ],
-  );
-
-  Widget _buildLogCard() {
-    final fmt = DateFormat('dd/MM HH:mm');
-    final recent = _history.reversed.take(20).toList();
-    return Container(
-      decoration: AppColors.glassCard(radius: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Row(
-              children: [
-                const Text(
-                  'Log Data',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.onSurface,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${recent.length} terbaru',
-                  style: TextStyle(fontSize: 10, color: AppColors.textDim),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Divider(
-            color: AppColors.outlineVariant.withValues(alpha: 0.4),
-            height: 1,
-          ),
-          ...recent.map((r) {
-            final sc = AppColors.statusColor(r.status);
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: sc,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        fmt.format(r.timestamp.toLocal()),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textDim,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${r.temperature.toStringAsFixed(1)}°C',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: sc,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${r.humidity.toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textDim,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: sc.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(
-                          r.status,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: sc,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (r != recent.last)
-                  Divider(
-                    color: AppColors.outlineVariant.withValues(alpha: 0.3),
-                    height: 1,
-                    indent: 32,
-                  ),
-              ],
-            );
-          }),
-          const SizedBox(height: 4),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmpty() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 48),
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: AppColors.glassCard(radius: 18),
-            child: const Icon(
-              Icons.bar_chart_rounded,
-              size: 28,
-              color: AppColors.textDim,
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Tidak ada data',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Coba pilih periode yang berbeda',
-            style: TextStyle(fontSize: 12, color: AppColors.textDim),
-          ),
-        ],
-      ),
-    ),
-  );
 }
