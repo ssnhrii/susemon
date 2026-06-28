@@ -5,7 +5,6 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
-import '../../../shared/widgets/interactive.dart';
 
 class HistoryPageNew extends StatefulWidget {
   const HistoryPageNew({super.key});
