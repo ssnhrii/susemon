@@ -282,7 +282,7 @@ class NotificationProvider extends ChangeNotifier {
 
   List<AppNotification> _notifications = [];
   int _unreadCount = 0;
-  bool _loading    = false;
+  final bool _loading    = false;
   Timer? _pollTimer;
 
   NotificationProvider(this._api);
