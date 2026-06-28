@@ -102,11 +102,7 @@ async def get_sensor_data(
                 ELSE 'AMAN'
               END AS status,
               ROUND(AVG(rssi), 0) AS rssi,
-              DATE_FORMAT(
-                FROM_UNIXTIME(
-                  FLOOR(UNIX_TIMESTAMP(timestamp) / {interval_seconds}) * {interval_seconds}
-                ), '%%Y-%%m-%%d %%H:%%i:%%S'
-              ) AS timestamp
+              MIN(timestamp) AS timestamp
             FROM sensor_data
             WHERE node_id=%s {time_filter}
             GROUP BY FLOOR(UNIX_TIMESTAMP(timestamp) / {interval_seconds}), node_id
