@@ -49,12 +49,12 @@ class ApiService {
   Future<T> _get<T>(String url, T Function(dynamic) parser) async {
     try {
       final res = await http.get(Uri.parse(url), headers: _headers)
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 30));
       final body = _parse(res);
       if (body['success'] == true) return parser(body['data']);
       throw Exception(body['message'] ?? 'Gagal mengambil data');
     } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server. Periksa koneksi jaringan.');
+      throw Exception('Tidak dapat terhubung ke server. Periksa IP dan koneksi jaringan.');
     } on http.ClientException catch (e) {
       throw Exception('Koneksi gagal: ${e.message}');
     }
@@ -68,7 +68,7 @@ class ApiService {
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.login}'),
         headers: _headers,
         body: jsonEncode({'ip_address': ipAddress, 'access_code': accessCode}),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 30));
       final body = _parse(res);
       if (body['success'] == true) {
         _token = body['data']['token'];
@@ -76,7 +76,7 @@ class ApiService {
       }
       throw Exception(body['message'] ?? 'Login gagal');
     } on SocketException {
-      throw Exception('Tidak dapat terhubung ke server. Periksa IP dan koneksi jaringan.');
+      throw Exception('Tidak dapat terhubung ke server.\nPastikan IP benar dan berada di jaringan yang sama.');
     } on http.ClientException catch (e) {
       throw Exception('Koneksi gagal: ${e.message}');
     }
@@ -292,6 +292,26 @@ class ApiService {
     final res = await http.delete(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.sensorNodes}/$nodeId'),
       headers: _headers,
+    ).timeout(const Duration(seconds: 10));
+    _parse(res);
+  }
+
+  // ── System Settings ────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getSystemSettings() async {
+    final res = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.systemSettings}'),
+      headers: _headers,
+    ).timeout(const Duration(seconds: 10));
+    final body = _parse(res);
+    return body['data'] as Map<String, dynamic>;
+  }
+
+  Future<void> updateSystemSettings(Map<String, dynamic> settings) async {
+    final res = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.systemSettings}'),
+      headers: _headers,
+      body: jsonEncode(settings),
     ).timeout(const Duration(seconds: 10));
     _parse(res);
   }

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/user_model.dart';
@@ -46,7 +46,7 @@ class _UsersPageState extends State<UsersPage> {
         builder: (ctx, setS) => AlertDialog(
           backgroundColor: AppColors.bgCard,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Tambah User', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+          title: const Text('Tambah User', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             _field('IP Address', ipCtrl, hint: '192.168.1.x atau 0.0.0.0'),
             const SizedBox(height: 10),
@@ -115,7 +115,7 @@ class _UsersPageState extends State<UsersPage> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgCard,
-        title: const Text('Hapus User', style: TextStyle(color: Colors.white)),
+        title: const Text('Hapus User', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
         content: Text('Hapus user "${user.name}"?', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false),
@@ -149,7 +149,7 @@ class _UsersPageState extends State<UsersPage> {
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              color: AppColors.bgCard,
+              color: AppColors.primary,
               child: Row(children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -157,11 +157,11 @@ class _UsersPageState extends State<UsersPage> {
                 ),
                 const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Manajemen User', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                  Text('Kelola akses pengguna sistem', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                  Text('Kelola akses pengguna sistem', style: TextStyle(fontSize: 10, color: Colors.white70)),
                 ]),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.person_add_rounded, color: AppColors.primary),
+                  icon: const Icon(Icons.person_add_rounded, color: Colors.white),
                   onPressed: _showAddDialog,
                   tooltip: 'Tambah User',
                 ),
@@ -195,7 +195,7 @@ class _UsersPageState extends State<UsersPage> {
 
   Widget _field(String label, TextEditingController ctrl, {String? hint}) => TextField(
     controller: ctrl,
-    style: const TextStyle(color: Colors.white, fontSize: 13),
+    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
     decoration: InputDecoration(
       labelText: label,
       hintText: hint,
@@ -242,7 +242,7 @@ class _UserCard extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text(user.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text(user.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

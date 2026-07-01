@@ -39,6 +39,8 @@ _STATUS_LEVEL = {"AMAN": 0, "WASPADA": 1, "BERBAHAYA": 2}
 _loop: asyncio.AbstractEventLoop = None
 _ws_manager = None
 _mqtt_client = None
+_mqtt_topic = "sensor/data"
+_mqtt_downlink_topic = "sensor/ai_result"
 
 # Hysteresis per node
 HYSTERESIS_UP   = 2
@@ -55,8 +57,8 @@ def set_ws_manager(manager):
 def _on_connect(client, userdata, flags, reason_code, properties=None):
     rc = reason_code if isinstance(reason_code, int) else (0 if str(reason_code) == "Success" else 1)
     if rc == 0:
-        client.subscribe(settings.MQTT_TOPIC, qos=1)
-        logger.info(f"MQTT connected → subscribed '{settings.MQTT_TOPIC}' QoS 1")
+        client.subscribe(_mqtt_topic, qos=1)
+        logger.info(f"MQTT connected → subscribed '{_mqtt_topic}' QoS 1")
     else:
         logger.error(f"MQTT connect failed: {reason_code}")
 
@@ -70,18 +72,18 @@ def _on_disconnect(client, userdata, disconnect_flags, reason_code=None, propert
 
 
 def _normalize_timestamp(ts_str: str) -> str:
-    """Normalisasi ke UTC ISO8601. Gateway baru kirim UTC (Z), lama +07:00."""
+    """Normalisasi ke UTC ISO8601. Gateway kirim WIB (+07:00), konversi ke UTC."""
     from datetime import timedelta
     if not ts_str:
         return datetime.now(timezone.utc).isoformat()
     try:
         if ts_str.endswith("+07:00"):
+            # WIB → UTC: kurangi 7 jam
             dt = datetime.fromisoformat(ts_str)
-            return (dt.replace(tzinfo=None) - timedelta(hours=7)).replace(
-                tzinfo=timezone.utc).isoformat()
+            return dt.astimezone(timezone.utc).isoformat()
         if ts_str.endswith("Z"):
             return ts_str[:-1] + "+00:00"
-        if "+" not in ts_str[-6:] and ts_str[-3] != ":":
+        if "+" not in ts_str[-6:] and ts_str[-3:] != ":00":
             return ts_str + "+00:00"
         return ts_str
     except Exception:
@@ -427,10 +429,10 @@ async def _process(data: dict):
             "node_id":    node_id,
             "status":     final_status,
             "risk":       ai_result.get("risk_level", "LOW") if ai_result else "LOW",
-            "confidence": ai_result.get("confidence", 0) if ai_result else 0,
+            "confidence": int(ai_result.get("confidence", 0)) if ai_result else 0,
         }
         _mqtt_client.publish(
-            settings.MQTT_DOWNLINK_TOPIC,
+            _mqtt_downlink_topic,
             json.dumps(downlink),
             qos=1,
             retain=False
@@ -441,29 +443,51 @@ async def _process(data: dict):
         )
 
 
-def start_mqtt_listener(loop: asyncio.AbstractEventLoop):
-    global _loop, _mqtt_client
+async def start_mqtt_listener(loop: asyncio.AbstractEventLoop):
+    global _loop, _mqtt_client, _mqtt_topic, _mqtt_downlink_topic
     _loop = loop
+
+    from app.core.database import get_system_settings
+    db_settings = await get_system_settings()
+
+    broker = db_settings.get("mqtt_broker", settings.MQTT_BROKER)
+    try:
+        port = int(db_settings.get("mqtt_port", settings.MQTT_PORT))
+    except (ValueError, TypeError):
+        port = 1883
+    user = db_settings.get("mqtt_user", settings.MQTT_USER)
+    pw = db_settings.get("mqtt_pass", settings.MQTT_PASS)
+    _mqtt_topic = db_settings.get("mqtt_topic", settings.MQTT_TOPIC)
+    _mqtt_downlink_topic = db_settings.get("mqtt_downlink_topic", settings.MQTT_DOWNLINK_TOPIC)
+    client_id = db_settings.get("mqtt_client_id", settings.MQTT_CLIENT_ID)
 
     # Kompatibel paho-mqtt v1 dan v2
     try:
         client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id=settings.MQTT_CLIENT_ID
+            client_id=client_id
         )
     except AttributeError:
-        client = mqtt.Client(client_id=settings.MQTT_CLIENT_ID)
+        client = mqtt.Client(client_id=client_id)
 
     client.on_connect    = _on_connect
     client.on_disconnect = _on_disconnect
     client.on_message    = _on_message
     client.reconnect_delay_set(min_delay=2, max_delay=30)
 
-    if settings.MQTT_USER:
-        client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASS)
+    if user:
+        client.username_pw_set(user, pw)
+
+    # Aktifkan SSL/TLS jika port 8883 atau menggunakan domain HiveMQ Cloud
+    if port == 8883 or (broker and broker.endswith(".hivemq.cloud")):
+        try:
+            client.tls_set()
+            logger.info("MQTT SSL/TLS enabled (Required for HiveMQ Cloud)")
+        except Exception as e:
+            logger.error(f"Failed to set MQTT TLS: {e}")
 
     try:
-        client.connect(settings.MQTT_BROKER, settings.MQTT_PORT, keepalive=60)
+        client.connect(broker, port, keepalive=60)
     except Exception as e:
         logger.error(f"MQTT initial connect error: {e}")
 
@@ -471,8 +495,28 @@ def start_mqtt_listener(loop: asyncio.AbstractEventLoop):
     thread = threading.Thread(target=client.loop_forever, daemon=True)
     thread.start()
     logger.info(
-        f"MQTT listener → {settings.MQTT_BROKER}:{settings.MQTT_PORT} "
-        f"topic_up={settings.MQTT_TOPIC} "
-        f"topic_down={settings.MQTT_DOWNLINK_TOPIC}"
+        f"MQTT listener (dynamic) → {broker}:{port} "
+        f"topic_up={_mqtt_topic} "
+        f"topic_down={_mqtt_downlink_topic}"
     )
     return client
+
+
+def stop_mqtt_listener():
+    global _mqtt_client
+    if _mqtt_client:
+        try:
+            _mqtt_client.disconnect()
+            logger.info("MQTT listener client disconnected")
+        except Exception as e:
+            logger.error(f"Error disconnecting MQTT client: {e}")
+        _mqtt_client = None
+
+
+async def restart_mqtt_listener():
+    global _loop
+    logger.info("Restarting MQTT listener with updated configuration...")
+    stop_mqtt_listener()
+    await asyncio.sleep(2)
+    if _loop:
+        await start_mqtt_listener(_loop)

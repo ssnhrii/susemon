@@ -6,6 +6,7 @@ import '../../../models/sensor_model.dart';
 import '../../../providers/app_provider.dart';
 import '../../../shared/widgets/interactive.dart';
 import 'sensor_detail_page.dart';
+import 'nodes_page.dart';
 
 class SensorsListPage extends StatefulWidget {
   const SensorsListPage({super.key});
@@ -15,11 +16,13 @@ class SensorsListPage extends StatefulWidget {
 
 class _SensorsListPageState extends State<SensorsListPage> {
   final _searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   String _query = '';
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -48,7 +51,13 @@ class _SensorsListPageState extends State<SensorsListPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F5FA),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => HapticFeedback.lightImpact(),
+        onPressed: () {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NodesPage()),
+          );
+        },
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -68,24 +77,31 @@ class _SensorsListPageState extends State<SensorsListPage> {
                 children: [
                   const SizedBox(height: 14),
                   // Breadcrumb
-                  Row(
-                    children: const [
-                      Icon(
-                        Icons.arrow_back_ios_rounded,
-                        size: 11,
-                        color: AppColors.primary,
-                      ),
-                      SizedBox(width: 3),
-                      Text(
-                        'DASHBOARD',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                  GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.maybePop(context);
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(
+                          Icons.arrow_back_ios_rounded,
+                          size: 11,
                           color: AppColors.primary,
-                          letterSpacing: 0.5,
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 3),
+                        Text(
+                          'DASHBOARD',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   // Title + buttons row
@@ -103,13 +119,22 @@ class _SensorsListPageState extends State<SensorsListPage> {
                       _OutlineBtn(
                         icon: Icons.tune_rounded,
                         label: 'Filter',
-                        onTap: () {},
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _searchFocus.requestFocus();
+                        },
                       ),
                       const SizedBox(width: 10),
                       _FilledBtn(
                         icon: Icons.add_rounded,
                         label: 'Add Sensor',
-                        onTap: () {},
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const NodesPage()),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -267,6 +292,7 @@ class _SensorsListPageState extends State<SensorsListPage> {
                                 Expanded(
                                   child: TextField(
                                     controller: _searchCtrl,
+                                    focusNode: _searchFocus,
                                     onChanged: (v) =>
                                         setState(() => _query = v),
                                     style: const TextStyle(

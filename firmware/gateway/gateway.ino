@@ -17,6 +17,7 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -37,7 +38,7 @@
 #define LED_HIJAU   2
 #define LED_KUNING  4
 #define LED_MERAH   15
-#define BTN_BOOT    0
+#define BTN_BOOT    38
 
 // ── LoRa (sinkron dengan node_sensor.ino) ────────────────────────────────────
 #define LORA_BAND      915E6
@@ -61,8 +62,9 @@ String cfgMqttServer, cfgMqttUser, cfgMqttPass;
 int    cfgMqttPort;
 String cfgTopicUp, cfgTopicDown, cfgBackendUrl;
 
-WiFiClient   wifiClient;
-PubSubClient mqtt(wifiClient);
+WiFiClient       wifiClient;
+WiFiClientSecure wifiClientSecure;
+PubSubClient     mqtt;
 WebServer    webServer(80);
 std::vector<String> msgBuffer;
 
@@ -74,6 +76,9 @@ GwStatus gwStatus = GW_WIFI_OFF, lastGwStatus = GW_OK;
 
 unsigned long lastHealthCheck = 0, lastNotifyOffline = 0;
 unsigned long lastReconnect = 0, btnPressTime = 0;
+unsigned long lastMqttMsgTime = 0;
+unsigned long lastNtpSync = 0;
+#define NTP_RESYNC_MS  3600000  // Re-sync NTP setiap 1 jam
 
 // ── Load config dari flash, fallback ke gateway_config.h ─────────────────────
 void loadConfig() {
@@ -125,11 +130,11 @@ void blinkLED(int pin, int n, int ms) {
   }
 }
 
-// ── Timestamp UTC ─────────────────────────────────────────────────────────────
+// ── Timestamp UTC+7 (WIB) ────────────────────────────────────────────────────
 String getTimestamp() {
-  time_t now; struct tm ti;
+  struct tm ti;
   if (!getLocalTime(&ti)) return "";
-  char buf[25]; strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &ti);
+  char buf[32]; strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+07:00", &ti);
   return String(buf);
 }
 
@@ -138,6 +143,15 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
   String msg = "";
   for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
   Serial.printf("[MQTT down] %s\n", msg.c_str());
+  
+  // Update status keaktifan backend via MQTT
+  lastMqttMsgTime = millis();
+  if (!backendOk) {
+    backendOk = true;
+    updateStatus();
+    Serial.println("[STATUS] Backend: ONLINE (via MQTT Downlink)");
+  }
+
   LoRa.idle(); delay(10);
   LoRa.beginPacket(); LoRa.print(msg); LoRa.endPacket(true);
   delay(50); LoRa.receive();
@@ -159,10 +173,27 @@ void broadcastStatus(const char* statusStr, const char* risk) {
 // ── Health check ──────────────────────────────────────────────────────────────
 bool checkBackend() {
   if (WiFi.status() != WL_CONNECTED) return false;
-  HTTPClient hc; hc.begin(cfgBackendUrl); hc.setTimeout(3000);
-  int code = hc.GET(); hc.end();
-  if (code != 200) Serial.printf("[HEALTH] Backend offline (HTTP %d)\n", code);
-  return (code == 200);
+
+  // Jika BACKEND_HEALTH_URL kosong (beda jaringan), skip HTTP check
+  if (cfgBackendUrl.length() > 0) {
+    HTTPClient hc; hc.begin(cfgBackendUrl); hc.setTimeout(2000);
+    int code = hc.GET(); hc.end();
+    if (code == 200) return true;
+    Serial.printf("[HEALTH] Backend HTTP %d\n", code);
+  }
+
+  // Fallback: backend dianggap online jika ada MQTT downlink dalam 45 detik terakhir
+  if (lastMqttMsgTime > 0 && (millis() - lastMqttMsgTime < 45000)) {
+    return true;
+  }
+
+  // Jika MQTT terhubung ke HiveMQ dan tidak ada URL lokal, anggap backend online
+  // selama MQTT broker sendiri terhubung (backend pakai broker yang sama)
+  if (mqtt.connected() && cfgBackendUrl.length() == 0) {
+    return true;
+  }
+
+  return false;
 }
 
 // ── WiFi connect ──────────────────────────────────────────────────────────────
@@ -176,7 +207,15 @@ bool connectWiFi() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\n[WiFi] OK IP=%s\n", WiFi.localIP().toString().c_str());
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov"); // WIB UTC+7
+    lastNtpSync = millis();
+    // Tunggu NTP sync
+    struct tm ti; int retry = 0;
+    while (!getLocalTime(&ti) && retry++ < 10) delay(500);
+    if (getLocalTime(&ti)) {
+      char buf[32]; strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+      Serial.printf("[NTP] Sync OK: %s WIB\n", buf);
+    }
     return true;
   }
   Serial.println("\n[WiFi] GAGAL"); return false;
@@ -196,7 +235,7 @@ bool connectMQTT() {
 // ── AP Config Mode (tahan BOOT 3 detik) ───────────────────────────────────────
 void startAPMode() {
   Serial.println("[AP] Mode konfigurasi aktif");
-  WiFi.softAP("SUSEMON-Gateway", "susemon123");
+  WiFi.softAP("Susemon_Gateway-Lora", "susemon123");
   Serial.printf("[AP] Buka http://%s\n", WiFi.softAPIP().toString().c_str());
 
   String form =
@@ -210,26 +249,15 @@ void startAPMode() {
     "<form method='POST' action='/save'>"
     "<label>WiFi SSID</label><input name='ssid' value='{SSID}'>"
     "<label>WiFi Password</label><input name='pass' type='password' placeholder='kosong = tidak berubah'>"
-    "<label>MQTT / Backend Server IP</label><input name='mqtt_ip' value='{MQTT_IP}'>"
-    "<label>MQTT Port</label><input name='mqtt_pt' value='{MQTT_PT}'>"
-    "<label>MQTT Username</label><input name='mqtt_u' value='{MQTT_U}'>"
-    "<label>MQTT Password</label><input name='mqtt_p' type='password' placeholder='kosong = tidak berubah'>"
     "<button type='submit'>Simpan &amp; Restart</button>"
     "</form></body></html>";
-  form.replace("{SSID}",    cfgWifiSsid);
-  form.replace("{MQTT_IP}", cfgMqttServer);
-  form.replace("{MQTT_PT}", String(cfgMqttPort));
-  form.replace("{MQTT_U}",  cfgMqttUser);
+  form.replace("{SSID}", cfgWifiSsid);
 
   webServer.on("/", HTTP_GET, [form]() { webServer.send(200, "text/html", form); });
   webServer.on("/save", HTTP_POST, []() {
-    String s  = webServer.arg("ssid");    if (s.isEmpty())   s   = cfgWifiSsid;
-    String p  = webServer.arg("pass");    if (p.isEmpty())   p   = cfgWifiPass;
-    String mi = webServer.arg("mqtt_ip"); if (mi.isEmpty())  mi  = cfgMqttServer;
-    int    mp = webServer.arg("mqtt_pt").toInt(); if (mp==0) mp  = cfgMqttPort;
-    String mu = webServer.arg("mqtt_u");  if (mu.isEmpty())  mu  = cfgMqttUser;
-    String mps= webServer.arg("mqtt_p");  if (mps.isEmpty()) mps = cfgMqttPass;
-    saveConfig(s, p, mi, mp, mu, mps);
+    String s  = webServer.arg("ssid"); if (s.isEmpty()) s = cfgWifiSsid;
+    String p  = webServer.arg("pass"); if (p.isEmpty()) p = cfgWifiPass;
+    saveConfig(s, p, cfgMqttServer, cfgMqttPort, cfgMqttUser, cfgMqttPass);
     webServer.send(200,"text/html","<html><body style='background:#0a0e1a;color:#fff;text-align:center;padding:60px'>"
       "<h2 style='color:#00c853'>Tersimpan!</h2><p>Restart dalam 3 detik...</p></body></html>");
     delay(3000); ESP.restart();
@@ -260,11 +288,35 @@ void setup() {
   blinkLED(LED_HIJAU, 3, 100);
   Serial.println("=== SUSEMON Gateway v2.0 ===");
 
-  // Tahan BOOT saat power-on -> AP mode
+  // Tahan BOOT saat power-on:
+  // - >= 3 detik -> AP Mode (untuk setting custom WiFi & IP)
+  // - >= 6 detik -> Reset preferences/flash config agar kembali ke gateway_config.h
   if (digitalRead(BTN_BOOT) == LOW) {
     delay(100); unsigned long t = millis();
-    while (digitalRead(BTN_BOOT) == LOW && millis()-t < 3000) blinkLED(LED_KUNING, 1, 200);
-    if (millis()-t >= 3000) { loadConfig(); startAPMode(); return; }
+    while (digitalRead(BTN_BOOT) == LOW) {
+      unsigned long duration = millis() - t;
+      if (duration < 3000) {
+        blinkLED(LED_KUNING, 1, 150);
+      } else if (duration < 6000) {
+        blinkLED(LED_HIJAU, 1, 100);
+      } else {
+        blinkLED(LED_MERAH, 1, 50);
+      }
+    }
+    unsigned long duration = millis() - t;
+    if (duration >= 6000) {
+      Serial.println("[CFG] Menghapus data flash preferences...");
+      prefs.begin("gw", false);
+      prefs.clear();
+      prefs.end();
+      Serial.println("[CFG] Reset berhasil! Menggunakan fallback gateway_config.h...");
+      blinkLED(LED_MERAH, 5, 100);
+      ESP.restart();
+    } else if (duration >= 3000) {
+      loadConfig();
+      startAPMode();
+      return;
+    }
   }
 
   loadConfig();
@@ -282,11 +334,27 @@ void setup() {
   loraReady = true;
   Serial.printf("[LoRa] OK %.0fMHz SF%d 0x%02X\n", LORA_BAND/1E6, LORA_SF, LORA_SYNCWORD);
 
+  // Deteksi dan konfigurasikan SSL/TLS jika menggunakan port secure (8883) atau domain HiveMQ Cloud
+  if (cfgMqttPort == 8883 || cfgMqttServer.endsWith(".hivemq.cloud")) {
+    wifiClientSecure.setInsecure(); // Mengabaikan verifikasi sertifikat root untuk memudahkan koneksi SSL
+    mqtt.setClient(wifiClientSecure);
+    Serial.println("[MQTT] Menggunakan Koneksi Aman (SSL/TLS - Port 8883)");
+  } else {
+    mqtt.setClient(wifiClient);
+    Serial.println("[MQTT] Menggunakan Koneksi Standar (TCP - Port 1883)");
+  }
+
   mqtt.setServer(cfgMqttServer.c_str(), cfgMqttPort);
   mqtt.setCallback(mqttCallback);
   mqtt.setBufferSize(512);
 
-  if (connectWiFi()) { connectMQTT(); backendOk = checkBackend(); }
+  if (connectWiFi()) { 
+    connectMQTT(); 
+    backendOk = checkBackend(); 
+  } else {
+    Serial.println("[WiFi] Gagal terhubung ke WiFi. Masuk ke AP Mode otomatis...");
+    startAPMode();
+  }
   updateStatus();
   Serial.println("[GW] Siap.");
 }
@@ -312,6 +380,13 @@ void loop() {
     if (now - lastReconnect > RECONNECT_MS) { lastReconnect = now; connectMQTT(); }
   }
   mqtt.loop();
+
+  // NTP re-sync setiap 1 jam
+  if (WiFi.status() == WL_CONNECTED && now - lastNtpSync > NTP_RESYNC_MS) {
+    lastNtpSync = now;
+    configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.println("[NTP] Re-sync...");
+  }
 
   // Health check backend
   if (now - lastHealthCheck > HEALTH_CHECK_MS) {

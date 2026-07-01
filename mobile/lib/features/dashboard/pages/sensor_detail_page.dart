@@ -7,6 +7,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../models/sensor_model.dart';
 import '../../../services/api_service.dart';
 import '../../../providers/app_provider.dart';
+import 'history_page_new.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SensorDetailPage extends StatefulWidget {
   final SensorNode node;
@@ -90,7 +92,7 @@ class _SensorDetailPageState extends State<SensorDetailPage>
   Color _tempColor(double? t) {
     if (t == null) return AppColors.textDim;
     if (t >= 40) return AppColors.danger;
-    if (t >= 35) return AppColors.warning;
+    if (t >= 30) return AppColors.warning;
     return const Color(0xFF3B82F6);
   }
   Color _humColor(double? h) {
@@ -276,12 +278,34 @@ class _SensorDetailPageState extends State<SensorDetailPage>
       const SizedBox(width:10),
       const Expanded(child:Text('Log Anomali',
         style:TextStyle(fontSize:14,fontWeight:FontWeight.w800,color:AppColors.textPrimary))),
-      GestureDetector(onTap:(){},
-        child:Row(mainAxisSize:MainAxisSize.min,children:[
-          const Icon(Icons.picture_as_pdf_rounded,size:13,color:AppColors.primary),
-          const SizedBox(width:4),
-          const Text('PDF REPORT',style:TextStyle(fontSize:10,fontWeight:FontWeight.w800,color:AppColors.primary)),
-        ])),
+      GestureDetector(
+        onTap: () async {
+          HapticFeedback.mediumImpact();
+          final sensor = context.read<SensorProvider>();
+          final url = sensor.getExportUrl(widget.node.nodeId, period: _period);
+          try {
+            final uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            } else {
+              throw 'Tidak dapat mengunduh CSV';
+            }
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Gagal mengekspor data: $e'), backgroundColor: AppColors.danger),
+            );
+          }
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.download_rounded, size: 13, color: AppColors.primary),
+            SizedBox(width: 4),
+            Text('EKSPOR CSV', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.primary)),
+          ],
+        ),
+      ),
     ]),
     const SizedBox(height:14),
     // Table header
@@ -296,9 +320,25 @@ class _SensorDetailPageState extends State<SensorDetailPage>
         child:Center(child:Text('Tidak ada anomali tercatat',style:TextStyle(color:AppColors.textDim,fontSize:12))))
     else ..._anomalies.take(5).map((n)=>_AnomalyRow(notif:n)),
     const SizedBox(height:8),
-    Center(child:GestureDetector(onTap:(){},
-      child:const Text('LIHAT SEMUA RIWAYAT',
-        style:TextStyle(fontSize:11,fontWeight:FontWeight.w700,color:AppColors.primary)))),
+    Center(
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const HistoryPageNew()),
+          );
+        },
+        child: const Text(
+          'LIHAT SEMUA RIWAYAT',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+    ),
   ]));
 
   Widget _buildAiTab() {

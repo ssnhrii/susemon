@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
+import '../../../services/api_service.dart';
+import 'users_page.dart';
+import '../../auth/login_screen.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SettingsSystemPage — Pengaturan Sistem (sesuai desain mockup)
@@ -19,20 +22,131 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
   int _activeTab = 0; // 0=MQTT, 1=Gateway, 2=LoRa, 3=AI, 4=Users, 5=Profile
 
   // MQTT form fields
-  final _brokerCtrl = TextEditingController(text: 'broker.susemon.internal');
-  final _portCtrl = TextEditingController(text: '1883');
-  final _clientIdCtrl = TextEditingController(text: 'SUSEMON_SVR_01');
-  final _keepAliveCtrl = TextEditingController(text: '60');
-  final _usernameCtrl = TextEditingController(text: 'admin_mqtt');
-  final _passwordCtrl = TextEditingController(text: '••••••••');
-  bool _authEnabled = true;
-  bool _connected = true;
-  bool _obscurePass = true;
+  final _brokerCtrl = TextEditingController();
+  final _portCtrl = TextEditingController();
+  final _clientIdCtrl = TextEditingController();
+  final _keepAliveCtrl = TextEditingController();
+  final _usernameCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _topicCtrl = TextEditingController();
+  final _downlinkTopicCtrl = TextEditingController();
 
-  final _topics = [
-    'susemon/datacenter/rack_01/temp',
-    'susemon/datacenter/rack_01/hum',
-  ];
+  // Gateway form fields
+  final _gwIpCtrl = TextEditingController();
+  final _gwApiKeyCtrl = TextEditingController();
+
+  // LoRa form fields
+  final _loraFreqCtrl = TextEditingController();
+  String _selectedDatr = 'SF7BW125';
+  String _selectedCodr = '4/5';
+
+  // AI form fields
+  final _tempWarningCtrl = TextEditingController();
+  final _tempDangerCtrl = TextEditingController();
+  final _humWarningCtrl = TextEditingController();
+  final _humDangerCtrl = TextEditingController();
+
+  bool _authEnabled = true;
+  bool _obscurePass = true;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final api = context.read<ApiService>();
+      final settings = await api.getSystemSettings();
+      setState(() {
+        _brokerCtrl.text = settings['mqtt_broker'] ?? 'localhost';
+        _portCtrl.text = settings['mqtt_port'] ?? '1883';
+        _clientIdCtrl.text = settings['mqtt_client_id'] ?? 'susemon-fastapi';
+        _keepAliveCtrl.text = settings['mqtt_keep_alive'] ?? '60';
+        _usernameCtrl.text = settings['mqtt_user'] ?? '';
+        _passwordCtrl.text = settings['mqtt_pass'] ?? '';
+        _authEnabled = (settings['mqtt_user'] ?? '').isNotEmpty;
+
+        _topicCtrl.text = settings['mqtt_topic'] ?? 'sensor/data';
+        _downlinkTopicCtrl.text = settings['mqtt_downlink_topic'] ?? 'sensor/ai_result';
+
+        _gwIpCtrl.text = settings['gateway_ip'] ?? '10.130.1.1';
+        _gwApiKeyCtrl.text = settings['gateway_api_key'] ?? '';
+
+        _loraFreqCtrl.text = settings['lora_freq'] ?? '915000000';
+        _selectedDatr = settings['lora_datr'] ?? 'SF7BW125';
+        _selectedCodr = settings['lora_codr'] ?? '4/5';
+
+        _tempWarningCtrl.text = settings['temp_warning'] ?? '35';
+        _tempDangerCtrl.text = settings['temp_danger'] ?? '40';
+        _humWarningCtrl.text = settings['hum_warning'] ?? '80';
+        _humDangerCtrl.text = settings['hum_danger'] ?? '85';
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Gagal memuat pengaturan: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final api = context.read<ApiService>();
+      final Map<String, dynamic> payload = {
+        'mqtt_broker': _brokerCtrl.text.trim(),
+        'mqtt_port': _portCtrl.text.trim(),
+        'mqtt_client_id': _clientIdCtrl.text.trim(),
+        'mqtt_keep_alive': _keepAliveCtrl.text.trim(),
+        'mqtt_user': _authEnabled ? _usernameCtrl.text.trim() : '',
+        'mqtt_pass': _authEnabled ? _passwordCtrl.text : '',
+        'mqtt_topic': _topicCtrl.text.trim(),
+        'mqtt_downlink_topic': _downlinkTopicCtrl.text.trim(),
+        'gateway_ip': _gwIpCtrl.text.trim(),
+        'gateway_api_key': _gwApiKeyCtrl.text.trim(),
+        'lora_freq': _loraFreqCtrl.text.trim(),
+        'lora_datr': _selectedDatr,
+        'lora_codr': _selectedCodr,
+        'temp_warning': _tempWarningCtrl.text.trim(),
+        'temp_danger': _tempDangerCtrl.text.trim(),
+        'hum_warning': _humWarningCtrl.text.trim(),
+        'hum_danger': _humDangerCtrl.text.trim(),
+      };
+      await api.updateSystemSettings(payload);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Semua konfigurasi berhasil disimpan dan diterapkan!'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _loadSettings();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan: $e'),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -42,6 +156,15 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
     _keepAliveCtrl.dispose();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
+    _topicCtrl.dispose();
+    _downlinkTopicCtrl.dispose();
+    _gwIpCtrl.dispose();
+    _gwApiKeyCtrl.dispose();
+    _loraFreqCtrl.dispose();
+    _tempWarningCtrl.dispose();
+    _tempDangerCtrl.dispose();
+    _humWarningCtrl.dispose();
+    _humDangerCtrl.dispose();
     super.dispose();
   }
 
@@ -82,10 +205,16 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.menu_rounded,
-                      color: Colors.white,
-                      size: 22,
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.maybePop(context);
+                      },
+                      child: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     const Column(
@@ -236,9 +365,38 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
   }
 
   Widget _buildTabContent() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(_errorMessage!, style: const TextStyle(color: AppColors.danger), textAlign: TextAlign.center),
+              const SizedBox(height: 14),
+              ElevatedButton(
+                onPressed: _loadSettings,
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     switch (_activeTab) {
       case 0:
         return _buildMqttTab();
+      case 1:
+        return _buildGatewayTab();
+      case 2:
+        return _buildLoraTab();
+      case 3:
+        return _buildAiTab();
       case 4:
         return _buildUsersTab();
       case 5:
@@ -289,6 +447,12 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
               controller: _keepAliveCtrl,
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
+            _FieldLabel('MQTT UPLINK TOPIC'),
+            _TextField(controller: _topicCtrl),
+            const SizedBox(height: 12),
+            _FieldLabel('MQTT DOWNLINK TOPIC'),
+            _TextField(controller: _downlinkTopicCtrl),
             const SizedBox(height: 16),
             // Aktifkan Autentikasi toggle
             GestureDetector(
@@ -350,410 +514,243 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
               ),
             ],
             const SizedBox(height: 20),
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFD1D5DB)),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Batal',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Perubahan disimpan'),
-                          backgroundColor: AppColors.success,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'Simpan Perubahan',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            _buildSaveButtons(),
           ],
         ),
       ),
-      const SizedBox(height: 16),
+    ],
+  );
 
-      // Topic Subscriptions card
+  // ── Gateway Tab ────────────────────────────────────────────────────────────
+  Widget _buildGatewayTab() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+    children: [
       _Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              children: [
-                const Text(
-                  'Topic Subscriptions',
+              children: const [
+                Icon(Icons.hub_rounded, color: AppColors.primary, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  'Konfigurasi Gateway LoRa',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    'ACTIVE\nCHANNELS',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.success,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
               ],
             ),
+            const SizedBox(height: 16),
+            _FieldLabel('GATEWAY IP ADDRESS'),
+            _TextField(controller: _gwIpCtrl),
             const SizedBox(height: 12),
-            ..._topics.map(
-              (t) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        t,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(
-                      Icons.more_horiz_rounded,
-                      size: 16,
-                      color: AppColors.textDim.withValues(alpha: 0.6),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            GestureDetector(
-              onTap: () {},
-              child: Row(
-                children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.add_rounded,
-                      size: 14,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'TAMBAH TOPIK BARU',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _FieldLabel('GATEWAY API KEY / SECURITY KEY'),
+            _TextField(controller: _gwApiKeyCtrl),
+            const SizedBox(height: 20),
+            _buildSaveButtons(),
           ],
         ),
       ),
-      const SizedBox(height: 16),
+    ],
+  );
 
-      // System Status card
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1F2E),
-          borderRadius: BorderRadius.circular(16),
-        ),
+  // ── LoRa Tab ───────────────────────────────────────────────────────────────
+  Widget _buildLoraTab() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+    children: [
+      _Card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              children: [
+              children: const [
+                Icon(Icons.settings_input_antenna, color: AppColors.primary, size: 18),
+                SizedBox(width: 8),
                 Text(
-                  'SYSTEM STATUS',
+                  'Konfigurasi LoRa Radio',
                   style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.5),
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.success,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'LIVE',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              _connected ? 'CONNECTED' : 'DISCONNECTED',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: _connected ? Colors.white : AppColors.danger,
-                height: 1,
+            const SizedBox(height: 16),
+            _FieldLabel('FREKUENSI LORA (HZ)'),
+            _TextField(
+              controller: _loraFreqCtrl,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            _FieldLabel('LORA DATARATE / SPREADING FACTOR'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F9FC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE8EAF0)),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Uptime: 24d 12h 5min',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white.withValues(alpha: 0.5),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'LATENCY',
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.5),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        '12ms',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'THROUGHPUT',
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.5),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        '1.2k/m',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: () => HapticFeedback.lightImpact(),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.15),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.refresh_rounded,
-                      size: 15,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Force Reconnect',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.85),
-                      ),
-                    ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedDatr,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'SF7BW125', child: Text('SF7 BW 125kHz')),
+                    DropdownMenuItem(value: 'SF8BW125', child: Text('SF8 BW 125kHz')),
+                    DropdownMenuItem(value: 'SF9BW125', child: Text('SF9 BW 125kHz')),
+                    DropdownMenuItem(value: 'SF10BW125', child: Text('SF10 BW 125kHz')),
                   ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedDatr = v);
+                  },
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            _FieldLabel('LORA CODING RATE (CR)'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F9FC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE8EAF0)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedCodr,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: '4/5', child: Text('4/5')),
+                    DropdownMenuItem(value: '4/6', child: Text('4/6')),
+                    DropdownMenuItem(value: '4/7', child: Text('4/7')),
+                    DropdownMenuItem(value: '4/8', child: Text('4/8')),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedCodr = v);
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            _buildSaveButtons(),
           ],
         ),
       ),
-      const SizedBox(height: 16),
+    ],
+  );
 
-      // Security Scan card
+  // ── AI Tab ─────────────────────────────────────────────────────────────────
+  Widget _buildAiTab() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+    children: [
       _Card(
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.security_rounded,
-                color: AppColors.success,
-                size: 20,
-              ),
+            Row(
+              children: const [
+                Icon(Icons.psychology_rounded, color: AppColors.primary, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  'Konfigurasi Threshold AI',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'SECURITY SCAN',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDim,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.shield_rounded,
-                        color: AppColors.success,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'SSL Encrypted',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.success,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    'TLS 1.2 active',
-                    style: TextStyle(fontSize: 10, color: AppColors.textDim),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 16),
+            _FieldLabel('BATAS PERINGATAN SUHU (WARNING °C)'),
+            _TextField(
+              controller: _tempWarningCtrl,
+              keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 12),
+            _FieldLabel('BATAS KRITIS SUHU (DANGER °C)'),
+            _TextField(
+              controller: _tempDangerCtrl,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            _FieldLabel('BATAS PERINGATAN KELEMBAPAN (WARNING %)'),
+            _TextField(
+              controller: _humWarningCtrl,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 12),
+            _FieldLabel('BATAS KRITIS KELEMBAPAN (DANGER %)'),
+            _TextField(
+              controller: _humDangerCtrl,
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 20),
+            _buildSaveButtons(),
           ],
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildSaveButtons() => Row(
+    children: [
+      Expanded(
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFD1D5DB)),
+            ),
+            child: const Center(
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        flex: 2,
+        child: GestureDetector(
+          onTap: _saveSettings,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Text(
+                'Simpan Perubahan',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     ],
@@ -783,7 +780,7 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
                   'Hanya Admin yang dapat mengelola pengguna.',
                   style: TextStyle(fontSize: 12, color: AppColors.textDim),
                 )
-              else
+              else ...[
                 Text(
                   'Login sebagai: ${auth.userName ?? 'Admin'} (${auth.role})',
                   style: const TextStyle(
@@ -791,6 +788,35 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
                     color: AppColors.textSecondary,
                   ),
                 ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const UsersPage()),
+                    );
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Kelola Pengguna',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -886,6 +912,11 @@ class _SettingsSystemPageState extends State<SettingsSystemPage> {
               context.read<NotificationProvider>().stop();
               context.read<AiProvider>().stop();
               context.read<AuthProvider>().logout();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (_) => false,
+              );
             }
           },
           child: Container(

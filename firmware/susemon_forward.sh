@@ -11,7 +11,7 @@
 #   SyncWord: 0x12
 
 # Bisa di-override via environment variable di Dragino
-SERVER="${SUSEMON_SERVER:-10.130.1.206}"
+SERVER="${SUSEMON_SERVER:-10.130.1.201}"
 PORT="${SUSEMON_MQTT_PORT:-1883}"
 USER="${SUSEMON_MQTT_USER:-susemon}"
 PASS="${SUSEMON_MQTT_PASS:-susemon123}"

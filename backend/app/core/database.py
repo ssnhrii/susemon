@@ -13,7 +13,7 @@ _pool: aiomysql.Pool = None
 
 async def get_pool() -> aiomysql.Pool:
     global _pool
-    if _pool is None:
+    if _pool is None or _pool._closed:
         _pool = await aiomysql.create_pool(
             host=settings.DB_HOST,
             port=settings.DB_PORT,
@@ -153,11 +153,38 @@ async def init_db():
             if settings_count == 0:
                 await cur.execute("""
                     INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES
-                    ('temp_warning', '35'),
+                    ('temp_warning', '30'),
                     ('temp_danger', '40'),
                     ('hum_warning', '80'),
-                    ('hum_danger', '85')
+                    ('hum_danger', '85'),
+                    ('mqtt_broker', 'broker.hivemq.com'),
+                    ('mqtt_port', '1883'),
+                    ('mqtt_user', ''),
+                    ('mqtt_pass', ''),
+                    ('mqtt_topic', 'susemon/sensor/data/pbl_412'),
+                    ('mqtt_downlink_topic', 'susemon/sensor/ai_result/pbl_412'),
+                    ('lora_freq', '915000000'),
+                    ('lora_datr', 'SF7BW125'),
+                    ('lora_codr', '4/5'),
+                    ('gateway_ip', '10.130.1.1'),
+                    ('gateway_api_key', 'gw-Xk9mP2nQ8rL5vT3wY7uJ4hF6cB1eA0sD')
                 """)
+
+            # Selalu sinkronkan konfigurasi MQTT dari .env ke DB saat startup agar tidak memakai data lama
+            from app.core.config import settings as cfg
+            mqtt_settings = {
+                'mqtt_broker': cfg.MQTT_BROKER,
+                'mqtt_port': str(cfg.MQTT_PORT),
+                'mqtt_user': cfg.MQTT_USER,
+                'mqtt_pass': cfg.MQTT_PASS,
+                'mqtt_topic': cfg.MQTT_TOPIC,
+                'mqtt_downlink_topic': cfg.MQTT_DOWNLINK_TOPIC
+            }
+            for key, val in mqtt_settings.items():
+                await cur.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value) VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE setting_value = %s
+                """, (key, str(val), str(val)))
 
             # Verifikasi dan buat index jika belum ada
             async def ensure_index(table_name: str, index_name: str, columns: str):
@@ -236,12 +263,12 @@ async def cleanup_old_data(retention_days: int = 90):
     )
 
 
-_THRESHOLDS_CACHE = {}
+_SETTINGS_CACHE = {}
 
-async def get_thresholds():
-    global _THRESHOLDS_CACHE
-    if _THRESHOLDS_CACHE:
-        return _THRESHOLDS_CACHE
+async def get_system_settings() -> dict:
+    global _SETTINGS_CACHE
+    if _SETTINGS_CACHE:
+        return _SETTINGS_CACHE
 
     try:
         pool = await get_pool()
@@ -250,35 +277,66 @@ async def get_thresholds():
                 await cur.execute("SELECT setting_key, setting_value FROM system_settings")
                 rows = await cur.fetchall()
                 if rows:
-                    _THRESHOLDS_CACHE = {r[0]: float(r[1]) for r in rows}
-                    return _THRESHOLDS_CACHE
+                    _SETTINGS_CACHE = {r[0]: r[1] for r in rows}
+                    return _SETTINGS_CACHE
     except Exception as e:
-        logger.error(f"Error loading thresholds from DB: {e}")
+        logger.error(f"Error loading system settings from DB: {e}")
 
-    # Fallback to config.settings if DB fails/is not initialized
+    # Fallback to config settings
     from app.core.config import settings as cfg
     return {
-        "temp_warning": cfg.AI_TEMP_WARNING,
-        "temp_danger": cfg.AI_TEMP_DANGER,
-        "hum_warning": cfg.AI_HUM_WARNING,
-        "hum_danger": cfg.AI_HUM_DANGER,
+        "temp_warning": str(cfg.AI_TEMP_WARNING),
+        "temp_danger": str(cfg.AI_TEMP_DANGER),
+        "hum_warning": str(cfg.AI_HUM_WARNING),
+        "hum_danger": str(cfg.AI_HUM_DANGER),
+        "mqtt_broker": cfg.MQTT_BROKER,
+        "mqtt_port": str(cfg.MQTT_PORT),
+        "mqtt_user": cfg.MQTT_USER,
+        "mqtt_pass": cfg.MQTT_PASS,
+        "mqtt_topic": cfg.MQTT_TOPIC,
+        "mqtt_downlink_topic": cfg.MQTT_DOWNLINK_TOPIC,
+        "lora_freq": "915000000",
+        "lora_datr": "SF7BW125",
+        "lora_codr": "4/5",
+        "gateway_ip": cfg.SERVER_IP,
+        "gateway_api_key": cfg.GATEWAY_API_KEY
     }
 
-async def update_thresholds(temp_warning: float, temp_danger: float, hum_warning: float, hum_danger: float):
-    global _THRESHOLDS_CACHE
+async def get_thresholds():
+    s = await get_system_settings()
+    try:
+        return {
+            "temp_warning": float(s.get("temp_warning", 30.0)),
+            "temp_danger": float(s.get("temp_danger", 40.0)),
+            "hum_warning": float(s.get("hum_warning", 80.0)),
+            "hum_danger": float(s.get("hum_danger", 85.0)),
+        }
+    except Exception:
+        return {
+            "temp_warning": 30.0,
+            "temp_danger": 40.0,
+            "hum_warning": 80.0,
+            "hum_danger": 85.0,
+        }
+
+async def update_system_settings_dict(settings_dict: dict):
+    global _SETTINGS_CACHE
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            for key, val in [
-                ("temp_warning", temp_warning),
-                ("temp_danger", temp_danger),
-                ("hum_warning", hum_warning),
-                ("hum_danger", hum_danger)
-            ]:
+            for key, val in settings_dict.items():
                 await cur.execute(
                     "INSERT INTO system_settings (setting_key, setting_value) VALUES (%s, %s) "
                     "ON DUPLICATE KEY UPDATE setting_value = %s",
                     (key, str(val), str(val))
                 )
-    _THRESHOLDS_CACHE.clear()
-    logger.info(f"Thresholds updated in DB: temp_w={temp_warning}, temp_d={temp_danger}, hum_w={hum_warning}, hum_d={hum_danger}")
+    _SETTINGS_CACHE.clear()
+    logger.info(f"System settings updated in DB: {list(settings_dict.keys())}")
+
+async def update_thresholds(temp_warning: float, temp_danger: float, hum_warning: float, hum_danger: float):
+    await update_system_settings_dict({
+        "temp_warning": temp_warning,
+        "temp_danger": temp_danger,
+        "hum_warning": hum_warning,
+        "hum_danger": hum_danger
+    })

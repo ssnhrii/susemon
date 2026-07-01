@@ -500,7 +500,7 @@ class _SettingsPageNewState extends State<SettingsPageNew> {
         ),
       ),
       Text(
-        'Peringatan dikirim jika suhu ≥ ${_threshold.toStringAsFixed(0)}°C',
+        'Waspada ≥ 30°C  ·  Berbahaya ≥ ${_threshold.toStringAsFixed(0)}°C',
         style: TextStyle(fontSize: 11, color: AppColors.textDim),
       ),
     ],

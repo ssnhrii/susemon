@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../auth/login_screen.dart';
 
@@ -142,7 +142,7 @@ class _OnboardPage extends StatelessWidget {
           ),
           const SizedBox(height: 40),
           Text(title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
               textAlign: TextAlign.center),
           const SizedBox(height: 16),
           Text(desc,

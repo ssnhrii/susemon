@@ -1,6 +1,7 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -29,7 +30,23 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _storage.read(key: 'server_ip').then((ip) {
-      if (ip != null && ip.isNotEmpty && mounted) _ipCtrl.text = ip;
+      if (ip != null && ip.isNotEmpty && mounted) {
+        _ipCtrl.text = ip;
+      } else if (mounted) {
+        if (kIsWeb) {
+          _ipCtrl.text = '127.0.0.1';
+        } else {
+          try {
+            if (Platform.isAndroid) {
+              _ipCtrl.text = '10.0.2.2'; // Android emulator default loopback
+            } else {
+              _ipCtrl.text = '127.0.0.1'; // Desktop / iOS simulator default
+            }
+          } catch (_) {
+            _ipCtrl.text = '127.0.0.1';
+          }
+        }
+      }
     });
     _startUdpDiscovery();
   }
@@ -175,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 8),
           _buildTextField(
             controller: _ipCtrl,
-            hint: '10.130.1.206  atau  127.0.0.1',
+            hint: 'Contoh: 10.130.1.201  atau  127.0.0.1',
             icon: Icons.router_outlined,
             obscure: false,
           ),
@@ -333,9 +350,10 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 8),
           _hintRow('Lokal', '127.0.0.1  ·  ADMIN123'),
+          _hintRow('Emulator', '10.0.2.2  ·  ADMIN123'),
           _hintRow('Jaringan', _detectedIp.isNotEmpty
               ? '$_detectedIp  ·  SUSEMON2026'
-              : '10.130.1.206  ·  SUSEMON2026'),
+              : '10.130.1.201  ·  SUSEMON2026'),
           if (_detectedIp.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),

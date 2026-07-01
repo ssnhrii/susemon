@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HistoryPageNew extends StatefulWidget {
   const HistoryPageNew({super.key});
@@ -15,7 +16,7 @@ class HistoryPageNew extends StatefulWidget {
 class _HistoryPageNewState extends State<HistoryPageNew>
     with SingleTickerProviderStateMixin {
   late TabController _chartTab;
-  String _period = '30d';
+  final String _period = '30d';
   List<SensorReading> _history = [];
   bool _loading = false;
   String _searchNode = '';
@@ -51,6 +52,71 @@ class _HistoryPageNewState extends State<HistoryPageNew>
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _showExportBottomSheet(SensorProvider sensor) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Ekspor Data Laporan (CSV)',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Pilih node sensor untuk mengunduh laporan riwayat data.',
+              style: TextStyle(fontSize: 12, color: AppColors.textDim),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: sensor.latest.length,
+                itemBuilder: (context, i) {
+                  final node = sensor.latest[i];
+                  return ListTile(
+                    leading: const Icon(Icons.table_chart_rounded, color: Color(0xFF16A34A)),
+                    title: Text(node.nodeName ?? node.nodeId, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: Text('ID: ${node.nodeId} · ${node.location ?? ""}', style: const TextStyle(fontSize: 11)),
+                    trailing: const Icon(Icons.download_rounded, color: AppColors.primary, size: 18),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final url = sensor.getExportUrl(node.nodeId, period: _period);
+                      try {
+                        final uri = Uri.parse(url);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } else {
+                          throw 'Tidak dapat membuka download link';
+                        }
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Gagal mengekspor data: $e'), backgroundColor: AppColors.danger),
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _formatDate(DateTime d) {
@@ -141,7 +207,10 @@ class _HistoryPageNewState extends State<HistoryPageNew>
                     const Spacer(),
                     // Kembali button
                     GestureDetector(
-                      onTap: () => HapticFeedback.lightImpact(),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.maybePop(context);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -256,7 +325,10 @@ class _HistoryPageNewState extends State<HistoryPageNew>
                             // Excel button
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => HapticFeedback.lightImpact(),
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  _showExportBottomSheet(sensor);
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 10,
@@ -294,7 +366,16 @@ class _HistoryPageNewState extends State<HistoryPageNew>
                             // Cetak PDF button
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => HapticFeedback.lightImpact(),
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Ekspor PDF sedang dikembangkan. Silakan gunakan fitur ekspor Excel/CSV.'),
+                                      backgroundColor: AppColors.warning,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 10,

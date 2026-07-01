@@ -6,6 +6,7 @@ import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
 import '../../../shared/widgets/interactive.dart';
 import '../../../shared/widgets/mesh_background.dart';
+import 'sensor_detail_page.dart';
 
 class AnalisisPage extends StatefulWidget {
   const AnalisisPage({super.key});
@@ -14,6 +15,20 @@ class AnalisisPage extends StatefulWidget {
 }
 
 class _AnalisisPageState extends State<AnalisisPage> {
+  SensorNode _toNode(AiAnalysis a, SensorProvider sp) {
+    final live = sp.latest.where((r) => r.nodeId == a.nodeId).firstOrNull;
+    return SensorNode(
+      id: 0,
+      nodeId: a.nodeId,
+      nodeName: a.nodeName ?? live?.nodeName ?? a.nodeId,
+      location: a.location ?? live?.location ?? '',
+      isActive: true,
+      currentTemp: a.currentTemp,
+      currentHumidity: a.currentHumidity,
+      currentStatus: a.riskLevel == 'HIGH' ? 'BERBAHAYA' : (a.riskLevel == 'MEDIUM' ? 'WASPADA' : 'AMAN'),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -75,7 +90,16 @@ class _AnalisisPageState extends State<AnalisisPage> {
                                   milliseconds: 50 * ai.analysis.indexOf(a),
                                 ),
                                 child: TapScale(
-                                  onTap: () => HapticFeedback.selectionClick(),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    final node = _toNode(a, sensor);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => SensorDetailPage(node: node),
+                                      ),
+                                    );
+                                  },
                                   child: _AiCard(analysis: a),
                                 ),
                               ),

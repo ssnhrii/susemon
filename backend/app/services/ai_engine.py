@@ -99,6 +99,89 @@ def linear_trend(values: List[float]) -> float:
     return num / den if den != 0 else 0.0
 
 
+def fuzzy_decision_logic(temp_error: float, max_error: float, anomaly_score: float, data_factor: float = 1.0) -> (str, float):
+    """
+    Fuzzy Inference System (Mamdani/Sugeno-like) to determine risk level and confidence.
+    
+    Inputs:
+    - temp_error: current_temp - temp_warning_adj
+    - max_error: temp_danger_adj - temp_warning_adj (normalizes the temperature deviation)
+    - anomaly_score: number of triggered anomaly signals (0 to 5)
+    - data_factor: ratio of loaded data (lower data means lower confidence)
+    
+    Outputs:
+    - risk_level: "LOW", "MEDIUM", or "HIGH"
+    - confidence: float score between 50 and 98
+    """
+    # ── 1. Fuzzification ──
+    # temp_error membership: Cool, Warm, Hot
+    if max_error <= 0.1:
+        max_error = 5.0
+        
+    # Cool: 1 at temp_error <= 0, 0 at temp_error >= max_error * 0.5
+    u_cool = max(0.0, min(1.0, (max_error * 0.5 - temp_error) / (max_error * 0.5))) if temp_error > 0 else 1.0
+    
+    # Warm: triangle between 0 and max_error
+    if temp_error <= 0:
+        u_warm = 0.0
+    elif temp_error <= max_error * 0.5:
+        u_warm = temp_error / (max_error * 0.5)
+    else:
+        u_warm = max(0.0, (max_error - temp_error) / (max_error * 0.5))
+        
+    # Hot: 0 at temp_error <= max_error * 0.5, 1 at temp_error >= max_error
+    u_hot = max(0.0, min(1.0, (temp_error - max_error * 0.5) / (max_error * 0.5))) if temp_error >= max_error * 0.5 else 0.0
+
+    # anomaly_score membership: Normal (0-1), Suspicious (1-3), Critical (3-5)
+    # Normal:
+    u_normal = max(0.0, min(1.0, (2.0 - anomaly_score) / 2.0)) if anomaly_score > 0 else 1.0
+    # Suspicious:
+    if anomaly_score <= 1.0:
+        u_suspicious = anomaly_score
+    else:
+        u_suspicious = max(0.0, (4.0 - anomaly_score) / 3.0)
+    # Critical:
+    u_critical = max(0.0, min(1.0, (anomaly_score - 1.0) / 2.0)) if anomaly_score >= 1.0 else 0.0
+
+    # ── 2. Rule Evaluation & Defuzzification (Sugeno-like weighted output) ──
+    # Rules define the target output centers for LOW (15-25), MEDIUM (40-75), HIGH (95)
+    rules = [
+        # (weight, target_center)
+        (min(u_cool, u_normal), 15.0),
+        (min(u_cool, u_suspicious), 25.0),
+        (min(u_cool, u_critical), 45.0),
+        (min(u_warm, u_normal), 40.0),
+        (min(u_warm, u_suspicious), 55.0),
+        (min(u_warm, u_critical), 75.0),
+        (u_hot, 95.0)
+    ]
+
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for weight, center in rules:
+        weighted_sum += weight * center
+        total_weight += weight
+
+    if total_weight > 0.0:
+        fuzzy_risk = weighted_sum / total_weight
+    else:
+        fuzzy_risk = 15.0 # default low
+
+    # Determine risk_level and confidence based on fuzzy_risk
+    if fuzzy_risk >= 70.0:
+        risk_level = "HIGH"
+    elif fuzzy_risk >= 35.0:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    # Confidence calculation based on fuzzy risk, scaled by data_factor (range 60% - 98%)
+    base_conf = 55.0 + (fuzzy_risk * 0.45)
+    confidence = max(60.0, min(98.0, base_conf * (0.8 + 0.2 * data_factor)))
+    
+    return risk_level, round(confidence, 1)
+
+
 def isolation_forest_score(readings: List[Dict]) -> float:
     """
     IF mendeteksi anomali multi-dimensi.
@@ -160,10 +243,10 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
     if thresholds is None:
         thresholds = {}
 
-    temp_warning = thresholds.get("temp_warning", 35.0)
-    temp_danger  = thresholds.get("temp_danger",  40.0)
-    hum_warning  = thresholds.get("hum_warning",  80.0)
-    hum_danger   = thresholds.get("hum_danger",   85.0)
+    temp_warning = float(thresholds.get("temp_warning", 35.0))
+    temp_danger  = float(thresholds.get("temp_danger",  40.0))
+    hum_warning  = float(thresholds.get("hum_warning",  80.0))
+    hum_danger   = float(thresholds.get("hum_danger",   85.0))
 
     if not readings or len(readings) < 3:
         return {
@@ -204,8 +287,8 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
 
     local_hour = local_dt.hour + local_dt.minute / 60.0
     
-    # Model fluktuasi harian: puncak suhu jam 14:00 (offset +1.0°C), terendah jam 02:00 (offset -1.0°C)
-    season_offset = math.cos((local_hour - 14) * math.pi / 12) * 1.0
+    # Model fluktuasi harian minimal — offset dikecilkan karena range threshold sudah sempit
+    season_offset = math.cos((local_hour - 14) * math.pi / 12) * 0.5  # max ±0.5°C
 
     # Sesuaikan threshold dengan jam (seasonality aware)
     temp_warning_adj = temp_warning + season_offset
@@ -229,7 +312,7 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
         except Exception:
             r_local = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=7)))
         r_hour = r_local.hour + r_local.minute / 60.0
-        r_offset = math.cos((r_hour - 14) * math.pi / 12) * 1.0
+        r_offset = math.cos((r_hour - 14) * math.pi / 12) * 0.5  # max ±0.5°C
         deseason_temps.append(float(r["temperature"]) - r_offset)
 
     latest_deseasonalized = latest - season_offset
@@ -287,37 +370,17 @@ def analyze_node(readings: List[Dict], thresholds: Dict = None) -> Dict[str, Any
     signals = [above_danger, z_temp_anom, z_hum_anom, ewma_dev, rapid, if_anomaly]
     signal_count = sum(1 for s in signals if s)
 
-    # ── Confidence ────────────────────────────────────────────────────────
+    # ── Confidence & Status (Fuzzy Logic Inference System) ─────────────────
+    temp_error = latest - temp_warning_adj
+    max_error = temp_danger_adj - temp_warning_adj
     data_factor = min(len(readings) / 50, 1.0)
+    anomaly_score = float(signal_count)
 
-    if signal_count == 0:
-        base = 65 + int(data_factor * 25)
-        margin_temp = temp_warning_adj - latest
-        margin_hum  = hum_warning  - latest_hum
-        if margin_temp < 5 or margin_hum < 5:
-            base -= 10
-        confidence = max(55, min(92, base))
-    else:
-        w = 0
-        if above_danger:  w += 40
-        if above_warning and not above_danger: w += 20
-        if z_temp_anom:   w += 15
-        if z_hum_anom:    w += 10
-        if ewma_dev:       w += 12
-        if rapid:          w += 10
-        if if_anomaly:     w += 13
-        confidence = max(60, min(98, 55 + w))
+    risk_level, confidence = fuzzy_decision_logic(temp_error, max_error, anomaly_score, data_factor)
 
     # ── Status ────────────────────────────────────────────────────────────
-    anomaly_detected = signal_count >= 2 or above_danger
-    overheating_risk = latest >= temp_danger_adj or (rapid and latest >= temp_warning_adj - 2)
-
-    if above_danger or overheating_risk or signal_count >= 4:
-        risk_level = "HIGH"
-    elif above_warning or signal_count >= 2:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "LOW"
+    anomaly_detected = (risk_level in ["MEDIUM", "HIGH"]) or above_danger or signal_count >= 2
+    overheating_risk = (risk_level == "HIGH") or above_danger or (rapid and latest >= temp_warning_adj - 2)
 
     # ── Prediksi 30 menit (Hybrid Holt-Seasonal Forecasting) ──
     try:

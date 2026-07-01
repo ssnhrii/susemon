@@ -36,12 +36,12 @@
 #define FW_VERSION       "v3.0"
 
 // Interval kirim adaptif berdasarkan status
-#define INTERVAL_AMAN        30000   // 30 detik — hemat daya saat normal
-#define INTERVAL_WASPADA     15000   // 15 detik — lebih sering saat waspada
-#define INTERVAL_BERBAHAYA   10000   // 10 detik — agresif saat bahaya
+#define INTERVAL_AMAN        5000   // 5 detik
+#define INTERVAL_WASPADA     5000   // 5 detik
+#define INTERVAL_BERBAHAYA   5000   // 5 detik
 #define DOWNLINK_TIMEOUT    120000   // 2 menit timeout
 #define DHT_RETRY_MAX           2    // Kurangi retry (hemat waktu aktif)
-#define OLED_TIMEOUT         30000   // OLED mati setelah 30 detik tidak ada update
+#define OLED_TIMEOUT        300000   // OLED mati setelah 5 menit tidak ada update
 #define LED_PULSE_MS           500   // LED nyala hanya 500ms saat status berubah
 
 // ── Pin LoRa ──────────────────────────────────────────────────────────────────
@@ -89,6 +89,9 @@ String aiRisk       = "-";
 int    aiConf       = 0;
 int    lastRssi     = 0;
 int    currentTxPower = LORA_TXPOWER_MAX;
+String lastTimeStr  = "";  // Waktu downlink terakhir (HH:MM WIB)
+unsigned long lastAlertBeep = 0;  // Waktu terakhir beep berulang
+#define ALERT_BEEP_INTERVAL  10000  // Beep ulang setiap 10 detik saat bahaya/waspada
 
 unsigned long lastDownlink  = 0;
 unsigned long lastSend      = 0;
@@ -157,6 +160,20 @@ void setup() {
   digitalWrite(LED_BIRU,   LOW);
   digitalWrite(BUZZER_PIN, LOW);
 
+  // ── Startup sequence: semua LED kedip bergantian ──
+  for (int i = 0; i < 2; i++) {
+    digitalWrite(LED_MERAH,  HIGH); delay(120); digitalWrite(LED_MERAH,  LOW); delay(60);
+    digitalWrite(LED_KUNING, HIGH); delay(120); digitalWrite(LED_KUNING, LOW); delay(60);
+    digitalWrite(LED_HIJAU,  HIGH); delay(120); digitalWrite(LED_HIJAU,  LOW); delay(60);
+    digitalWrite(LED_BIRU,   HIGH); delay(120); digitalWrite(LED_BIRU,   LOW); delay(60);
+  }
+  // Semua nyala sekaligus lalu mati
+  digitalWrite(LED_HIJAU, HIGH); digitalWrite(LED_KUNING, HIGH);
+  digitalWrite(LED_MERAH, HIGH); digitalWrite(LED_BIRU,   HIGH);
+  delay(300);
+  digitalWrite(LED_HIJAU, LOW);  digitalWrite(LED_KUNING, LOW);
+  digitalWrite(LED_MERAH, LOW);  digitalWrite(LED_BIRU,   LOW);
+
   // OLED init
   Wire.begin(OLED_SDA, OLED_SCL);
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -205,6 +222,17 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  // ── Beep berulang saat WASPADA/BERBAHAYA ────────────────────────────────
+  if (now - lastAlertBeep > ALERT_BEEP_INTERVAL) {
+    if (aiStatus == "BERBAHAYA") {
+      lastAlertBeep = now;
+      buzzerBeep(3, 200);  // beep beep beep
+    } else if (aiStatus == "WASPADA") {
+      lastAlertBeep = now;
+      buzzerBeep(2, 150);  // beep beep
+    }
+  }
+
   // ── Cek downlink LoRa ─────────────────────────────────────────────────────
   int pktSize = LoRa.parsePacket();
   if (pktSize > 0) {
@@ -223,10 +251,14 @@ void loop() {
       if (newPower != currentTxPower) {
         currentTxPower = newPower;
         LoRa.setTxPower(currentTxPower);
-        Serial.printf("[PWR] TX power: %ddBm\n", currentTxPower);
       }
       sendRawData();
     }
+
+    // Pastikan LED status tetap menyala setelah TX
+    if      (aiStatus == "AMAN")      digitalWrite(LED_HIJAU,  HIGH);
+    else if (aiStatus == "WASPADA")   digitalWrite(LED_KUNING, HIGH);
+    else if (aiStatus == "BERBAHAYA") digitalWrite(LED_MERAH,  HIGH);
 
     // Wake OLED untuk update
     oledWake();
@@ -235,10 +267,7 @@ void loop() {
   }
 
   // ── Auto-off OLED setelah timeout ────────────────────────────────────────
-  if (oledOn && (now - lastOledUpdate > OLED_TIMEOUT)) {
-    oledOff();
-    Serial.println("[PWR] OLED off");
-  }
+  // OLED selalu nyala permanen
 
   // ── Downlink timeout ─────────────────────────────────────────────────────
   if (aiStatus != "MENUNGGU" &&
@@ -329,8 +358,19 @@ void receiveDownlink() {
   String prev  = aiStatus;
   String rawSt = doc["status"] | "AMAN";
   aiRisk       = doc["risk"]   | "LOW";
-  aiConf       = doc["confidence"] | 0;
+  aiConf       = (int)(doc["confidence"] | 0);
   lastDownlink = millis();
+
+  // Ambil timestamp dari downlink jika ada
+  const char* ts = doc["timestamp"];
+  if (ts && strlen(ts) >= 16) {
+    // Format: 2026-07-01T12:34:56+07:00 → ambil HH:MM
+    String tsStr = String(ts);
+    int tIdx = tsStr.indexOf('T');
+    if (tIdx > 0 && (int)tsStr.length() > tIdx + 5) {
+      lastTimeStr = tsStr.substring(tIdx + 1, tIdx + 6); // "HH:MM"
+    }
+  }
 
   Serial.printf("[RX] RSSI=%d: %s\n", lastRssi, jsonStr.c_str());
 
@@ -354,9 +394,9 @@ void receiveDownlink() {
   lastOledUpdate = millis();
 }
 
-// ── Apply status AI — LED pulse singkat ───────────────────────────────────────
+// ── Apply status AI — LED + Buzzer ───────────────────────────────────────────
 void applyAIStatus(String prev) {
-  if (aiStatus == prev) return;  // tidak berubah, hemat LED
+  if (aiStatus == prev) return;  // tidak berubah
 
   // Matikan semua LED dulu
   digitalWrite(LED_HIJAU,  LOW);
@@ -364,20 +404,16 @@ void applyAIStatus(String prev) {
   digitalWrite(LED_MERAH,  LOW);
 
   if (aiStatus == "AMAN") {
-    // Pulse hijau singkat, bukan nyala terus
-    ledPulse(LED_HIJAU, 800);
-    if (prev == "WASPADA" || prev == "BERBAHAYA") buzzerBeep(1, 60);
+    digitalWrite(LED_HIJAU, HIGH);  // Hijau nyala terus = aman
+    if (prev == "WASPADA" || prev == "BERBAHAYA") {
+      buzzerBeep(1, 100);  // 1x beep saat kembali aman
+    }
   } else if (aiStatus == "WASPADA") {
-    // Nyala terus tapi redup (PWM bisa ditambah jika perlu)
-    // Untuk sekarang: pulse 2x
-    ledPulse(LED_KUNING, 300);
-    delay(100);
-    ledPulse(LED_KUNING, 300);
-    if (prev != "WASPADA") buzzerBeep(2, 100);
+    digitalWrite(LED_KUNING, HIGH);  // Kuning nyala terus = waspada
+    buzzerBeep(2, 150);              // beep beep
   } else if (aiStatus == "BERBAHAYA") {
-    // Wajib nyala terus karena darurat
-    digitalWrite(LED_MERAH, HIGH);
-    buzzerAlert();
+    digitalWrite(LED_MERAH, HIGH);   // Merah nyala terus = bahaya
+    buzzerBeep(3, 200);              // beep beep beep
   }
 }
 
@@ -437,13 +473,16 @@ void updateDisplay() {
   display.setCursor(tempX + tempPx + 2, 14); display.print((char)247);
   display.setCursor(tempX + tempPx + 2, 22); display.print("C");
 
-  // Humid + TX + RSSI
+  // Humid + TX + RSSI + Jam
   display.setTextSize(1);
   display.setCursor(0, 38);
   display.print("H:"); display.print((int)humidity); display.print("%");
   display.setCursor(48, 38);
   display.print("TX:"); display.print(txCount);
-  if (lastRssi != 0) {
+  if (lastTimeStr.length() > 0) {
+    display.setCursor(86, 38);
+    display.print(lastTimeStr);
+  } else if (lastRssi != 0) {
     display.setCursor(86, 38);
     display.print(lastRssi); display.print("dB");
   }

@@ -109,7 +109,7 @@ class SensorProvider extends ChangeNotifier {
 
   // Thresholds — sinkron dengan backend system_settings
   double _tempDanger  = 40.0;
-  double _tempWarning = 35.0;
+  double _tempWarning = 30.0;
   double _humWarning  = 80.0;
   double _humDanger   = 85.0;
 
@@ -152,7 +152,7 @@ class SensorProvider extends ChangeNotifier {
     try {
       final data  = await _api.getThresholds();
       _tempDanger  = (data['temp_danger']  as num?)?.toDouble() ?? 40.0;
-      _tempWarning = (data['temp_warning'] as num?)?.toDouble() ?? 35.0;
+      _tempWarning = (data['temp_warning'] as num?)?.toDouble() ?? 30.0;
       _humWarning  = (data['hum_warning']  as num?)?.toDouble() ?? 80.0;
       _humDanger   = (data['hum_danger']   as num?)?.toDouble() ?? 85.0;
       notifyListeners();
@@ -163,7 +163,7 @@ class SensorProvider extends ChangeNotifier {
   Future<void> updateTempThreshold(double danger) async {
     try {
       _tempDanger  = danger;
-      _tempWarning = danger - 5.0;
+      _tempWarning = 30.0;  // warning tetap 30°C
       notifyListeners();
       await _api.updateThresholds(
         _tempWarning, danger,

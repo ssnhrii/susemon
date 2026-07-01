@@ -23,6 +23,7 @@ class ApiConfig {
   static const String sensorData = '/sensors/data';
   static const String sensorStats = '/sensors/statistics';
   static const String sensorExport = '/sensors/export';
+  static const String systemSettings = '/sensors/system-settings';
 
   // AI
   static const String aiAnalysis = '/ai/analysis';

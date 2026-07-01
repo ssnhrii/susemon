@@ -7,7 +7,7 @@ import io
 import csv
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from fastapi.responses import StreamingResponse
-from app.core.database import get_pool, get_thresholds, update_thresholds
+from app.core.database import get_pool, get_thresholds, update_thresholds, get_system_settings, update_system_settings_dict
 from app.core.security import get_current_user, verify_gateway_key, require_pic_or_admin
 from app.models.schemas import SensorDataIn, SensorNodeCreate, SensorNodeUpdate
 
@@ -424,3 +424,27 @@ async def update_thresholds_endpoint(
 
     await update_thresholds(temp_warning, temp_danger, hum_warning, hum_danger)
     return {"success": True, "message": "Thresholds updated successfully"}
+
+
+@router.get("/system-settings")
+async def get_system_settings_endpoint(user=Depends(get_current_user)):
+    settings = await get_system_settings()
+    return {"success": True, "data": settings}
+
+
+@router.put("/system-settings")
+async def update_system_settings_endpoint(
+    body: dict = Body(...),
+    user=Depends(require_pic_or_admin)
+):
+    await update_system_settings_dict(body)
+    
+    # Reload MQTT dynamically
+    try:
+        from app.services.mqtt_listener import restart_mqtt_listener
+        import asyncio
+        asyncio.create_task(restart_mqtt_listener())
+    except Exception:
+        pass
+        
+    return {"success": True, "message": "System settings updated successfully"}

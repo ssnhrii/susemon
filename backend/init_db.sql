@@ -81,43 +81,7 @@ INSERT IGNORE INTO users (ip_address, access_code, name, role) VALUES
 
 -- ── Seed: sensor nodes ───────────────────────────────────────
 INSERT IGNORE INTO sensor_nodes (node_id, node_name, location) VALUES
-('TA11', 'Node Sensor TA11', 'Rack Server Utama'),
-('B2', 'Node Sensor B2', 'Rack Server Backup'),
-('C3', 'Node Sensor C3', 'Rack Network'),
-('D4', 'Node Sensor D4', 'Rack Storage');
-
--- ── Seed: sample sensor data (untuk testing AI) ──────────────
-INSERT IGNORE INTO sensor_data (node_id, temperature, humidity, status) VALUES
-('TA11', 27.5, 61.0, 'AMAN'),('TA11', 28.0, 62.0, 'AMAN'),('TA11', 27.8, 60.5, 'AMAN'),
-('TA11', 28.3, 63.0, 'AMAN'),('TA11', 28.1, 61.5, 'AMAN'),('TA11', 27.9, 62.5, 'AMAN'),
-('TA11', 28.5, 63.5, 'AMAN'),('TA11', 28.2, 62.0, 'AMAN'),('TA11', 27.7, 61.0, 'AMAN'),
-('TA11', 28.4, 62.8, 'AMAN'),
-
-('B2', 31.0, 66.0, 'WASPADA'),('B2', 31.5, 67.0, 'WASPADA'),('B2', 32.0, 67.5, 'WASPADA'),
-('B2', 31.8, 66.5, 'WASPADA'),('B2', 32.1, 68.0, 'WASPADA'),('B2', 31.3, 65.5, 'WASPADA'),
-('B2', 32.3, 67.0, 'WASPADA'),('B2', 31.9, 66.8, 'WASPADA'),('B2', 32.5, 68.5, 'WASPADA'),
-('B2', 31.7, 66.2, 'WASPADA'),
-
-('C3', 26.0, 57.0, 'AMAN'),('C3', 26.5, 58.0, 'AMAN'),('C3', 26.2, 57.5, 'AMAN'),
-('C3', 26.8, 58.5, 'AMAN'),('C3', 26.3, 57.8, 'AMAN'),('C3', 26.7, 58.2, 'AMAN'),
-('C3', 26.1, 57.3, 'AMAN'),('C3', 26.9, 58.8, 'AMAN'),('C3', 26.4, 57.6, 'AMAN'),
-('C3', 26.6, 58.1, 'AMAN'),
-
-('D4', 39.0, 72.0, 'WASPADA'),('D4', 39.5, 73.0, 'BERBAHAYA'),('D4', 40.0, 74.0, 'BERBAHAYA'),
-('D4', 40.5, 74.5, 'BERBAHAYA'),('D4', 41.0, 75.0, 'BERBAHAYA'),('D4', 40.8, 74.8, 'BERBAHAYA'),
-('D4', 41.2, 75.5, 'BERBAHAYA'),('D4', 40.3, 74.2, 'BERBAHAYA'),('D4', 41.5, 76.0, 'BERBAHAYA'),
-('D4', 40.7, 74.6, 'BERBAHAYA');
-
--- ── Seed: sample notifications ───────────────────────────────
-INSERT IGNORE INTO notifications (node_id, title, message, type) VALUES
-('D4', 'Suhu Kritis - Node D4',
- 'Suhu mencapai 41.2°C pada Rack Storage. Tindakan segera diperlukan!', 'critical'),
-('B2', 'Anomali Terdeteksi - Node B2',
- 'Pola anomali suhu tidak normal. AI confidence: 87%', 'warning'),
-('D4', 'Prediksi Overheating',
- 'AI memprediksi overheating dalam 30 menit pada Node D4', 'warning'),
-(NULL, 'Sistem Aktif',
- 'Semua node sensor terhubung. SUSEMON siap monitoring.', 'success');
+('TA11', 'Node Sensor TA11', 'Rack Server Utama');
 
 -- ── Verifikasi (diperbaiki) ─────────────────────────────────
 SELECT '=== SUSEMON DB READY ===' AS info;

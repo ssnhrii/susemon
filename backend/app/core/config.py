@@ -24,7 +24,7 @@ class Settings:
     CORS_ORIGINS: list = os.getenv("CORS_ORIGIN", "*").split(",")
 
     # AI Thresholds — sesuai .env
-    AI_TEMP_WARNING: float  = float(os.getenv("AI_THRESHOLD_TEMP_WARNING", 35))
+    AI_TEMP_WARNING: float  = float(os.getenv("AI_THRESHOLD_TEMP_WARNING", 30))
     AI_TEMP_DANGER: float   = float(os.getenv("AI_THRESHOLD_TEMP", 40))
     AI_HUM_WARNING: float   = float(os.getenv("AI_THRESHOLD_HUM_WARNING", 80))
     AI_HUM_DANGER: float    = float(os.getenv("AI_THRESHOLD_HUMIDITY", 85))

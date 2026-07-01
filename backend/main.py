@@ -234,7 +234,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     set_ws_manager(manager)
     loop = asyncio.get_event_loop()
-    start_mqtt_listener(loop)
+    await start_mqtt_listener(loop)
     t1 = asyncio.create_task(broadcast_sensor_data())
     t2 = asyncio.create_task(auto_ai_scan())
     t3 = asyncio.create_task(udp_beacon())
@@ -243,6 +243,8 @@ async def lifespan(app: FastAPI):
     yield
     for t in [t1, t2, t3, t4]:
         t.cancel()
+    from app.services.mqtt_listener import stop_mqtt_listener
+    stop_mqtt_listener()
     await close_pool()
     logger.info("SUSEMON FastAPI stopped")
 

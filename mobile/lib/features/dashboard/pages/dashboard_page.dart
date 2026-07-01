@@ -9,6 +9,9 @@ import '../../../shared/widgets/interactive.dart';
 import '../../../shared/widgets/mesh_background.dart';
 import 'sensor_detail_page.dart';
 import 'settings_system_page.dart';
+import 'notifikasi_page_new.dart';
+import 'sensors_list_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD PAGE — desain baru sesuai mockup
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +207,13 @@ class _AppBar extends StatelessWidget {
           const Spacer(),
           _PulseDot(connected: wsConnected),
           const SizedBox(width: 8),
-          _iconBtn(Icons.notifications_outlined, () {}),
+          _iconBtn(Icons.notifications_outlined, () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotifikasiPageNew()),
+            );
+          }),
           const SizedBox(width: 4),
           _iconBtn(Icons.settings_outlined, () {
             HapticFeedback.lightImpact();
@@ -379,7 +388,29 @@ class _DashHeader extends StatelessWidget {
             ),
             const Spacer(),
             TapScale(
-              onTap: () => HapticFeedback.lightImpact(),
+              onTap: () async {
+                HapticFeedback.mediumImpact();
+                if (exportUrl != null && exportUrl!.isNotEmpty) {
+                  try {
+                    final uri = Uri.parse(exportUrl!);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } else {
+                      throw 'Tidak dapat membuka download link';
+                    }
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Gagal mengekspor data: $e'), backgroundColor: AppColors.danger),
+                    );
+                  }
+                } else {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Tidak ada data untuk diekspor'), backgroundColor: AppColors.warning),
+                  );
+                }
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -840,14 +871,16 @@ class _TrendCard extends StatelessWidget {
                       showTitles: true,
                       reservedSize: 24,
                       getTitlesWidget: (val, meta) {
-                        if (val.toInt() % 2 != 0)
-                          return const SizedBox.shrink();
+                        if (readings.isEmpty) return const SizedBox.shrink();
+                        final sorted = [...readings]
+                          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+                        final step = (sorted.length / 4).ceil().clamp(1, 999);
+                        if (val.toInt() % step != 0) return const SizedBox.shrink();
+                        final idx = val.toInt().clamp(0, sorted.length - 1);
+                        final t = sorted[idx].timestamp.toLocal();
                         return Text(
-                          '${val.toInt()}',
-                          style: const TextStyle(
-                            fontSize: 8,
-                            color: AppColors.textDim,
-                          ),
+                          '${t.hour.toString().padLeft(2,"0")}:${t.minute.toString().padLeft(2,"0")}',
+                          style: const TextStyle(fontSize: 8, color: AppColors.textDim),
                         );
                       },
                     ),
@@ -928,7 +961,13 @@ class _AktivitasTerbaru extends StatelessWidget {
             ),
             const Spacer(),
             GestureDetector(
-              onTap: () => HapticFeedback.selectionClick(),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SensorsListPage()),
+                );
+              },
               child: const Text(
                 'LIHAT SEMUA',
                 style: TextStyle(
@@ -1155,10 +1194,15 @@ class _AktivitasTerbaru extends StatelessWidget {
   }
 
   String _timeAgo(DateTime ts) {
-    final diff = DateTime.now().difference(ts.toLocal());
+    final local = ts.toLocal();
+    final diff = DateTime.now().difference(local);
     if (diff.inMinutes < 1) return 'Baru saja';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} menit lalu';
-    if (diff.inHours < 24) return '${diff.inHours} jam lalu';
-    return '${diff.inDays} hari lalu';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mnt lalu';
+    if (diff.inHours < 24) {
+      final h = local.hour.toString().padLeft(2, '0');
+      final m = local.minute.toString().padLeft(2, '0');
+      return '$h:$m WIB';
+    }
+    return '${local.day}/${local.month} ${local.hour.toString().padLeft(2,'0')}:${local.minute.toString().padLeft(2,'0')}';
   }
 }

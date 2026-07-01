@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../models/sensor_model.dart';
 import '../../../services/api_service.dart';
+import 'sensor_detail_page.dart';
 
 class NodesPage extends StatefulWidget {
   const NodesPage({super.key});
@@ -44,7 +45,7 @@ class _NodesPageState extends State<NodesPage> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Tambah Perangkat', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+        title: const Text('Tambah Perangkat', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           _field('Node ID (Unique)', idCtrl, hint: 'Contoh: A1, B2, C3'),
           const SizedBox(height: 10),
@@ -93,7 +94,7 @@ class _NodesPageState extends State<NodesPage> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.bgCard,
-        title: const Text('Hapus Perangkat', style: TextStyle(color: Colors.white)),
+        title: const Text('Hapus Perangkat', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
         content: Text('Hapus perangkat "${node.nodeName}" (${node.nodeId})? Semua riwayat data juga akan terhapus.',
             style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
@@ -128,7 +129,7 @@ class _NodesPageState extends State<NodesPage> {
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              color: AppColors.bgCard,
+              color: AppColors.primary,
               child: Row(children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -136,11 +137,11 @@ class _NodesPageState extends State<NodesPage> {
                 ),
                 const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Manajemen Perangkat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
-                  Text('Kelola node sensor IoT', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                  Text('Kelola node sensor IoT', style: TextStyle(fontSize: 10, color: Colors.white70)),
                 ]),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.add_to_queue_rounded, color: AppColors.primary),
+                  icon: const Icon(Icons.add_to_queue_rounded, color: Colors.white),
                   onPressed: _showAddDialog,
                   tooltip: 'Tambah Perangkat',
                 ),
@@ -159,9 +160,19 @@ class _NodesPageState extends State<NodesPage> {
                             padding: const EdgeInsets.all(16),
                             itemCount: _nodes.length,
                             separatorBuilder: (_, __) => const SizedBox(height: 10),
-                            itemBuilder: (_, i) => _NodeCard(
-                              node: _nodes[i],
-                              onDelete: () => _deleteNode(_nodes[i]),
+                            itemBuilder: (_, i) => GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => SensorDetailPage(node: _nodes[i]),
+                                  ),
+                                );
+                              },
+                              child: _NodeCard(
+                                node: _nodes[i],
+                                onDelete: () => _deleteNode(_nodes[i]),
+                              ),
                             ),
                           ),
                         ),
@@ -174,7 +185,7 @@ class _NodesPageState extends State<NodesPage> {
 
   Widget _field(String label, TextEditingController ctrl, {String? hint}) => TextField(
     controller: ctrl,
-    style: const TextStyle(color: Colors.white, fontSize: 13),
+    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
     decoration: InputDecoration(
       labelText: label,
       hintText: hint,
@@ -219,7 +230,7 @@ class _NodeCard extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text(node.nodeName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text(node.nodeName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

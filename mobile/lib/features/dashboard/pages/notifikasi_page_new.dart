@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../providers/app_provider.dart';
 import '../../../models/sensor_model.dart';
+import 'sensor_detail_page.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // NotifikasiPageNew — halaman Alerts sesuai desain mockup
@@ -18,7 +19,7 @@ class NotifikasiPageNew extends StatefulWidget {
 class _NotifikasiPageNewState extends State<NotifikasiPageNew> {
   // Filter: 'semua', 'critical', 'warning', 'info'
   String _filter = 'semua';
-  String _dateFilter = '';
+  final String _dateFilter = '';
   int _visibleCount = 10;
 
   List<AppNotification> _applyFilter(List<AppNotification> all) {
@@ -30,9 +31,10 @@ class _NotifikasiPageNewState extends State<NotifikasiPageNew> {
 
   String _timeStr(DateTime ts) {
     final t = ts.toLocal();
-    return '${t.hour.toString().padLeft(2, '0')}:'
-        '${t.minute.toString().padLeft(2, '0')}:'
-        '${t.second.toString().padLeft(2, '0')}';
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'Baru saja';
+    if (d.inMinutes < 60) return '${d.inMinutes} mnt lalu';
+    return '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')} WIB';
   }
 
   @override
@@ -339,6 +341,29 @@ class _NotifikasiPageNewState extends State<NotifikasiPageNew> {
                               notif: n,
                               timeStr: _timeStr(n.createdAt),
                               onMarkRead: () => notifProv.markRead(n.id),
+                              onLihatSensor: n.nodeId == null
+                                  ? null
+                                  : () {
+                                      HapticFeedback.selectionClick();
+                                      final sp = context.read<SensorProvider>();
+                                      final live = sp.latest.where((r) => r.nodeId == n.nodeId).firstOrNull;
+                                      final node = SensorNode(
+                                        id: 0,
+                                        nodeId: n.nodeId!,
+                                        nodeName: n.nodeName ?? live?.nodeName ?? n.nodeId!,
+                                        location: n.location ?? live?.location ?? '',
+                                        isActive: true,
+                                        currentTemp: live?.temperature,
+                                        currentHumidity: live?.humidity,
+                                        currentStatus: live?.status,
+                                      );
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => SensorDetailPage(node: node),
+                                        ),
+                                      );
+                                    },
                             ),
                           ),
 
@@ -444,10 +469,12 @@ class _AlertItem extends StatelessWidget {
   final AppNotification notif;
   final String timeStr;
   final VoidCallback onMarkRead;
+  final VoidCallback? onLihatSensor;
   const _AlertItem({
     required this.notif,
     required this.timeStr,
     required this.onMarkRead,
+    this.onLihatSensor,
   });
 
   Color get _iconBg {
@@ -596,19 +623,28 @@ class _AlertItem extends StatelessWidget {
                               children: [
                                 // Lihat Sensor
                                 if (notif.nodeId != null) ...[
-                                  Icon(
-                                    Icons.open_in_new_rounded,
-                                    size: 12,
-                                    color: AppColors.primary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    'LIHAT\nSENSOR',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.primary,
-                                      height: 1.3,
+                                  GestureDetector(
+                                    onTap: onLihatSensor,
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.open_in_new_rounded,
+                                          size: 12,
+                                          color: AppColors.primary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          'LIHAT\nSENSOR',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.primary,
+                                            height: 1.3,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(width: 12),
